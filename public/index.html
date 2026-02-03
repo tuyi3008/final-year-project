@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StyleTrans - Image Style Transfer Prototype</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>🎨 StyleTrans Prototype</h1>
+            <p>Upload your photo and reimagine it with AI.</p>
+        </header>
+
+        <div class="main-content">
+            <!-- upload area -->
+            <div class="upload-section" id="drop-zone">
+                <div class="icon">📁</div>
+                <h3>Click or Drag image here</h3>
+                <input type="file" id="file-input" accept="image/png, image/jpeg">
+            </div>
+
+            <!-- style selection and transform button -->
+            <div class="controls-section">
+                <label for="style-select">Choose a Style:</label>
+                <select id="style-select">
+                    <option value="sketch">✏️ Pencil Sketch</option>
+                    <option value="anime">✨ Anime</option>
+                    <option value="ink">🖌️ Ink Wash Painting</option>
+                </select>
+                <button id="transform-btn" disabled>Transform Image</button>
+            </div>
+
+            <!-- result display area -->
+            <div class="result-section" id="result-section" style="display: none;">
+                <div class="image-wrapper">
+                    <div class="img-box">
+                        <h4>Original</h4>
+                        <img id="original-img" src="" alt="Original">
+                    </div>
+                    <div class="img-box">
+                        <h4>Transformed Result</h4>
+                        <img id="processed-img" src="" alt="Processed">
+                        <div class="loading-overlay" id="loading-spinner">
+                            <div class="spinner"></div>
+                            <p>Processing...</p>
+                        </div>
+                    </div>
+                </div>
+                <a id="download-btn" href="#" class="btn secondary" download>Download Result</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
