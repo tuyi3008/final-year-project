@@ -1,1 +1,17 @@
+__pycache__/
+*.pyc
+
+ai/outputs/
+*.pth
+*.pt
+
+data/
+*.jpg
+*.png
+
+*.ipynb
+
+# Node.js
 node_modules/
+
+uploads/
