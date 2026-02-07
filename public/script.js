@@ -235,6 +235,56 @@ transformBtn.addEventListener('click', async () => {
     }
 });
 
+// ==================== Authentication UI Only ====================
+
+// 1. When user clicks "Sign In" button, show auth modal
+const loginBtn = document.querySelector('.btn-login');
+if (loginBtn) {
+    loginBtn.addEventListener('click', () => {
+        const authModal = document.getElementById('authModal');
+        if (authModal) {
+            const modal = new bootstrap.Modal(authModal);
+            modal.show();
+        }
+    });
+}
+
+// 2. Basic form validation feedback (UI only)
+const loginForm = document.getElementById('loginForm');
+if (loginForm) {
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        alert('Login feature will be implemented with backend');
+    });
+}
+
+const registerForm = document.getElementById('registerForm');
+if (registerForm) {
+    registerForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        alert('Registration feature will be implemented with backend');
+    });
+}
+
+// 3. Show loading state on form submission (visual feedback only)
+function showFormLoading(form, isLoading) {
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        if (isLoading) {
+            submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i> Processing...';
+            submitBtn.disabled = true;
+        } else {
+            // Reset based on form type
+            if (form.id === 'loginForm') {
+                submitBtn.innerHTML = '<i class="bi bi-box-arrow-in-right me-2"></i> Sign In';
+            } else {
+                submitBtn.innerHTML = '<i class="bi bi-person-plus me-2"></i> Create Account';
+            }
+            submitBtn.disabled = false;
+        }
+    }
+}
+
 // Reset button
 resetBtn.addEventListener('click', clearFileSelection);
 
