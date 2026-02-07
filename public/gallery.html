@@ -10,7 +10,6 @@
     <link rel="stylesheet" href="gallery.css">
 </head>
 <body data-bs-theme="dark">
-    <!-- Header (same as main page) -->
     <header class="glass-header">
         <nav class="container">
             <div class="brand">
@@ -38,6 +37,14 @@
 
     <div class="container py-5">
         <h1 class="text-center mb-4">Style Gallery</h1>
+        
+        <!-- 新增：筛选按钮 -->
+        <div class="filter-buttons text-center mb-4">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="sketch">Sketch</button>
+            <button class="filter-btn" data-filter="anime">Anime</button>
+            <button class="filter-btn" data-filter="ink">Ink Wash</button>
+        </div>
         
         <!-- Gallery images will be loaded here -->
         <div class="row" id="gallery-grid"></div>
