@@ -1,71 +1,177 @@
-/* gallery.css - Gallery Styles */
+/* gallery.css - Gallery Page Specific Styles */
+
+/* Gallery Item */
+.gallery-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.3s ease;
+    height: 100%;
+}
+
+.gallery-item:hover {
+    transform: translateY(-5px);
+    border-color: rgba(99, 102, 241, 0.3);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.gallery-image {
+    position: relative;
+    border-radius: 12px;
+    overflow: hidden;
+    aspect-ratio: 1;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.gallery-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.gallery-item:hover .gallery-image img {
+    transform: scale(1.05);
+}
+
+.gallery-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(180deg, 
+        rgba(0, 0, 0, 0) 0%,
+        rgba(0, 0, 0, 0.5) 100%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: 15px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.gallery-item:hover .gallery-overlay {
+    opacity: 1;
+}
+
+.gallery-info {
+    margin-top: 15px;
+}
+
+.gallery-info h6 {
+    font-weight: 600;
+    color: var(--light);
+    margin-bottom: 8px;
+}
 
 /* Filter Buttons */
-.filter-buttons {
+.filter-tags {
     display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-bottom: 30px;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .filter-btn {
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #999;
-    padding: 8px 20px;
+    color: var(--gray);
+    padding: 8px 16px;
     border-radius: 20px;
+    font-size: 0.9rem;
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .filter-btn:hover {
-    background: rgba(99, 102, 241, 0.1);
-    color: white;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--light);
 }
 
 .filter-btn.active {
-    background: rgba(99, 102, 241, 0.2);
-    border-color: #6366f1;
-    color: #6366f1;
+    background: rgba(99, 102, 241, 0.1);
+    border-color: var(--primary);
+    color: var(--primary);
 }
 
-/* Gallery Grid */
-#gallery-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-    margin-top: 30px;
+/* Image Info in Modal */
+.image-info {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    padding: 20px;
 }
 
-/* Gallery Item */
-.gallery-item {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
-    overflow: hidden;
-    transition: transform 0.3s ease;
+.stats {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 15px 0;
+    margin: 15px 0;
 }
 
-.gallery-item:hover {
-    transform: translateY(-5px);
+.stats i {
+    font-size: 1.2rem;
+    vertical-align: middle;
 }
 
-.gallery-item img {
-    width: 100%;
-    height: 250px;
-    object-fit: cover;
+.stats > div {
+    display: flex;
+    align-items: center;
+    gap: 5px;
 }
 
-.gallery-info {
-    padding: 15px;
+/* Gallery Page Specific Header */
+.gallery-header {
+    padding: 3rem 0 2rem;
 }
 
-.gallery-info h5 {
-    margin-bottom: 5px;
-    color: white;
+.gallery-header .display-5 {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
-.gallery-info p {
-    color: #999;
-    font-size: 0.9rem;
-    margin: 0;
+/* Empty State */
+#empty-state {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 20px;
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+}
+
+#empty-state .display-1 {
+    opacity: 0.3;
+}
+
+/* Load More Button */
+#load-more {
+    padding: 12px 40px;
+    font-weight: 600;
+}
+
+/* Responsive Adjustments for Gallery */
+@media (max-width: 768px) {
+    .gallery-header {
+        padding: 2rem 0 1.5rem;
+    }
+    
+    .filter-tags {
+        justify-content: center;
+        margin-bottom: 15px;
+    }
+    
+    .filter-btn {
+        padding: 6px 12px;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .gallery-item {
+        padding: 15px;
+    }
+    
+    .gallery-info h6 {
+        font-size: 0.95rem;
+    }
 }
