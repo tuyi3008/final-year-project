@@ -15,3 +15,5 @@ data/
 node_modules/
 
 uploads/
+
+.env
