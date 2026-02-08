@@ -1,0 +1,31 @@
+/* community.css - Simple Community Styles */
+
+/* Basic community container */
+.community-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+/* Simple post card */
+.community-post {
+    background: #2a2a3a;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.post-author {
+    color: #6366f1;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.post-content {
+    color: #ccc;
+    margin-bottom: 10px;
+}
+
+.post-stats {
+    color: #888;
+    font-size: 0.9rem;
+}
