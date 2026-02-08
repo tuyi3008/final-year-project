@@ -41,41 +41,20 @@ app.post('/api/transform', upload.single('image'), async (req, res) => {
         const filename = 'processed_' + req.file.filename;
         const outputPath = path.join(processedDir, filename);
 
-        console.log(`Processing image: ${req.file.filename} with style: ${style}`);
+        console.log(`[API Call] Processing: ${req.file.filename}, Style: ${style}`);
 
-        // --- Simulated image processing logic ---
-        // in finakl version, replace this with actual style transfer model inference
-        const image = await Jimp.read(inputPath);
-
-        if (style === 'sketch') {
-            // simulate sketch: desaturate + increase contrast + posterize
-            image.greyscale().contrast(0.8).posterize(4);
-        } else if (style === 'anime') {
-            // simulate anime: increase saturation + slight brightness
-            image.color([{ apply: 'saturate', params: [50] }]).brightness(0.1);
-        } else if (style === 'ink') {
-            // simulate ink: desaturate + blur + decrease brightness
-            image.greyscale().blur(2).brightness(-0.1);
-        } else {
-            // default: invert colors
-            image.invert();
-        }
-
-        await image.writeAsync(outputPath);
-        // -------------------------------------------
-
-        // simulate network delay
         setTimeout(() => {
             res.json({
                 success: true,
                 originalUrl: `/uploads/${req.file.filename}`,
-                processedUrl: `/processed/${filename}`
+                processedUrl: `/processed/${filename}`,
+                note: 'AI integration in progress. This is a placeholder.'
             });
-        }, 2000);
+        }, 500);
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Processing failed' });
+        console.error('[Route Error]', error);
+        res.status(500).json({ error: 'Server processing failed' });
     }
 });
 
