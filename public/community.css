@@ -1,4 +1,4 @@
-/* community.css - Simple Community Styles */
+/* community.css - Slightly Improved */
 
 /* Basic community container */
 .community-container {
@@ -6,26 +6,52 @@
     margin: 0 auto;
 }
 
-/* Simple post card */
+/* Post card with hover */
 .community-post {
-    background: #2a2a3a;
-    border-radius: 8px;
-    padding: 15px;
-    margin-bottom: 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    transition: background 0.3s ease;
+}
+
+.community-post:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .post-author {
     color: #6366f1;
     font-weight: bold;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .post-content {
     color: #ccc;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    line-height: 1.5;
 }
 
 .post-stats {
     color: #888;
     font-size: 0.9rem;
+    display: flex;
+    gap: 20px;
+}
+
+.post-stats i {
+    margin-right: 5px;
+}
+
+/* Simple header */
+.community-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.community-header h1 {
+    color: white;
+    margin-bottom: 10px;
 }

@@ -1,24 +1,27 @@
-// community.js - Simple Community Script
+// community.js - Slightly Improved
 
 // Sample posts
 const posts = [
     {
         user: "SketchMaster",
-        text: "Just created an amazing sketch!",
+        text: "Just finished a cityscape sketch using our pencil style. The details came out amazing!",
         likes: 42,
-        time: "2h"
+        comments: 8,
+        time: "2 hours ago"
     },
     {
         user: "AnimeFan", 
-        text: "Anime style transformation tutorial",
+        text: "Trying out the anime style for portrait transformation. Loving the vibrant colors!",
         likes: 89,
-        time: "1d"
+        comments: 15,
+        time: "1 day ago"
     },
     {
         user: "InkArtist",
-        text: "Traditional ink painting techniques",
+        text: "Experimenting with ink wash techniques on landscape photos. The results are stunning!",
         likes: 56,
-        time: "3d"
+        comments: 12,
+        time: "3 days ago"
     }
 ];
 
@@ -32,10 +35,15 @@ window.addEventListener('DOMContentLoaded', () => {
             postDiv.className = 'community-post';
             
             postDiv.innerHTML = `
-                <div class="post-author">${post.user}</div>
+                <div class="post-author">
+                    <i class="bi bi-person-circle"></i>
+                    ${post.user}
+                </div>
                 <div class="post-content">${post.text}</div>
                 <div class="post-stats">
-                    ${post.likes} likes • ${post.time} ago
+                    <span><i class="bi bi-heart"></i> ${post.likes}</span>
+                    <span><i class="bi bi-chat"></i> ${post.comments}</span>
+                    <span>${post.time}</span>
                 </div>
             `;
             
