@@ -1,4 +1,4 @@
-// DOM Elements
+// ====================== DOM Elements ======================
 const fileInput = document.getElementById('file-input');
 const dropZone = document.getElementById('drop-zone');
 const transformBtn = document.getElementById('transform-btn');
@@ -18,11 +18,13 @@ const actionButtons = document.getElementById('action-buttons');
 const resetBtn = document.getElementById('reset-btn');
 const steps = document.querySelectorAll('.step');
 
-// State variables
+// ====================== State Variables ======================
 let selectedFile = null;
 let selectedStyle = 'sketch';
 
-// Format file size
+// ====================== Helper Functions ======================
+
+// Format bytes into human-readable format
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -42,47 +44,55 @@ function updateSteps(stepNumber) {
     });
 }
 
+// Display alert message
+function showAlert(type, message) {
+    const alertType = type === 'error' ? 'danger' : 'success';
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${alertType} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
+    alertDiv.style.zIndex = '1050';
+    alertDiv.style.minWidth = '300px';
+    alertDiv.innerHTML = `
+        <i class="bi ${type === 'error' ? 'bi-exclamation-triangle' : 'bi-check-circle'} me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    setTimeout(() => {
+        if (alertDiv.parentNode) alertDiv.remove();
+    }, 5000);
+}
+
 // Handle file selection
 function handleFileSelection(file) {
-    // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
         showAlert('error', 'Please select a valid image file (JPEG or PNG)');
         return;
     }
     
-    // Validate file size (max 10MB)
     const maxSize = 10 * 1024 * 1024; // 10MB
     if (file.size > maxSize) {
         showAlert('error', 'File size must be less than 10MB');
         return;
     }
-    
+
     selectedFile = file;
-    
-    // Update file info display
+
+    // Update file info
     filenameSpan.textContent = file.name;
     filesizeSpan.textContent = formatFileSize(file.size);
     fileInfo.classList.remove('d-none');
-    
-    // Preview image
+
+    // Preview original image
     const reader = new FileReader();
     reader.onload = function(e) {
         originalImg.src = e.target.result;
-        
-        // Show style section and action buttons
         styleSection.style.display = 'block';
         actionButtons.style.display = 'block';
         resultSection.style.display = 'none';
-        
-        // Enable transform button
         transformBtn.disabled = false;
-        
-        // Update steps
         updateSteps(2);
-        
-        // Select first style by default
-        selectStyleCard('sketch');
+        selectStyleCard('sketch'); // Default style
     };
     reader.onerror = function() {
         showAlert('error', 'Failed to read the image file');
@@ -94,18 +104,14 @@ function handleFileSelection(file) {
 function selectStyleCard(style) {
     selectedStyle = style;
     styleSelect.value = style;
-    
-    // Update card selection
+
     styleCards.forEach(card => {
-        if (card.dataset.style === style) {
-            card.classList.add('selected');
-        } else {
-            card.classList.remove('selected');
-        }
+        if (card.dataset.style === style) card.classList.add('selected');
+        else card.classList.remove('selected');
     });
 }
 
-// Clear file selection
+// Clear selected file and reset UI
 function clearFileSelection() {
     selectedFile = null;
     fileInput.value = '';
@@ -118,39 +124,14 @@ function clearFileSelection() {
     updateSteps(1);
 }
 
-// Show alert
-function showAlert(type, message) {
-    const alertType = type === 'error' ? 'danger' : 'success';
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${alertType} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3`;
-    alertDiv.style.zIndex = '1050';
-    alertDiv.style.minWidth = '300px';
-    alertDiv.innerHTML = `
-        <i class="bi ${type === 'error' ? 'bi-exclamation-triangle' : 'bi-check-circle'} me-2"></i>
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    `;
-    
-    document.body.appendChild(alertDiv);
-    
-    // Auto remove after 5 seconds
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
-        }
-    }, 5000);
-}
+// ====================== Event Listeners ======================
 
-// Event Listeners
-
-// Click upload area
+// Click upload zone to trigger file input
 dropZone.addEventListener('click', () => fileInput.click());
 
 // File input change
 fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-        handleFileSelection(e.target.files[0]);
-    }
+    if (e.target.files.length > 0) handleFileSelection(e.target.files[0]);
 });
 
 // Drag and drop events
@@ -158,25 +139,16 @@ dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropZone.classList.add('dragover');
 });
-
-dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('dragover');
-});
-
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
-    
-    if (e.dataTransfer.files.length > 0) {
-        handleFileSelection(e.dataTransfer.files[0]);
-    }
+    if (e.dataTransfer.files.length > 0) handleFileSelection(e.dataTransfer.files[0]);
 });
 
 // Style card selection
 styleCards.forEach(card => {
-    card.addEventListener('click', () => {
-        selectStyleCard(card.dataset.style);
-    });
+    card.addEventListener('click', () => selectStyleCard(card.dataset.style));
 });
 
 // Transform button click
@@ -190,56 +162,45 @@ transformBtn.addEventListener('click', async () => {
     loadingOverlay.style.display = 'flex';
     resultSection.style.display = 'block';
     downloadBtn.style.display = 'none';
-    
-    // Update steps
     updateSteps(3);
 
+    // Prepare form data
     const formData = new FormData();
-    formData.append('image', selectedFile);
-    formData.append('style', selectedStyle);
+    formData.append('content', selectedFile); // Matches FastAPI parameter
+    formData.append('style', selectedFile);   // Temporary: use same image as style (replace later if you have style images)
 
     try {
-        // Send request to server
-        const response = await fetch('http://localhost:3000/api/transform', {
+        const response = await fetch('http://127.0.0.1:8000/stylize/', {
             method: 'POST',
             body: formData
         });
 
         const data = await response.json();
 
-        if (data.success) {
-            // Success - update processed image
-            const fullUrl = 'http://localhost:3000' + data.processedUrl;
+        if (data.image_base64) {
+            const base64Data = `data:image/png;base64,${data.image_base64}`;
+            processedImg.src = base64Data;
+            downloadBtn.href = base64Data;
 
-            processedImg.src = fullUrl;
-            downloadBtn.href = fullUrl;
-            
-            // Set download filename
             const timestamp = new Date().getTime();
-            downloadBtn.download = `styletrans-${selectedStyle}-${timestamp}.jpg`;
-            
+            downloadBtn.download = `styletrans-${selectedStyle}-${timestamp}.png`;
             downloadBtn.style.display = 'inline-block';
-            
-            // Show success message
             showAlert('success', 'Image transformed successfully!');
         } else {
-            // Error handling
-            showAlert('error', 'Error: ' + (data.error || 'Processing failed'));
+            showAlert('error', 'Processing failed');
         }
+
     } catch (error) {
         console.error('Transform error:', error);
-        showAlert('error', 'Network error. Please check your connection and try again.');
+        showAlert('error', 'Network error. Please check your connection.');
     } finally {
-        // Reset UI
         loadingOverlay.style.display = 'none';
         transformBtn.disabled = false;
         transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
     }
 });
 
-// ==================== Authentication UI Only ====================
-
-// 1. When user clicks "Sign In" button, show auth modal
+// ====================== Authentication Modal (UI Only) ======================
 const loginBtn = document.querySelector('.btn-login');
 if (loginBtn) {
     loginBtn.addEventListener('click', () => {
@@ -251,41 +212,17 @@ if (loginBtn) {
     });
 }
 
-// 2. Basic form validation feedback (UI only)
 const loginForm = document.getElementById('loginForm');
-if (loginForm) {
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        alert('Login feature will be implemented with backend');
-    });
-}
+if (loginForm) loginForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    alert('Login feature will be implemented with backend');
+});
 
 const registerForm = document.getElementById('registerForm');
-if (registerForm) {
-    registerForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        alert('Registration feature will be implemented with backend');
-    });
-}
-
-// 3. Show loading state on form submission (visual feedback only)
-function showFormLoading(form, isLoading) {
-    const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) {
-        if (isLoading) {
-            submitBtn.innerHTML = '<i class="bi bi-hourglass-split me-2"></i> Processing...';
-            submitBtn.disabled = true;
-        } else {
-            // Reset based on form type
-            if (form.id === 'loginForm') {
-                submitBtn.innerHTML = '<i class="bi bi-box-arrow-in-right me-2"></i> Sign In';
-            } else {
-                submitBtn.innerHTML = '<i class="bi bi-person-plus me-2"></i> Create Account';
-            }
-            submitBtn.disabled = false;
-        }
-    }
-}
+if (registerForm) registerForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    alert('Registration feature will be implemented with backend');
+});
 
 // Reset button
 resetBtn.addEventListener('click', clearFileSelection);
@@ -293,5 +230,5 @@ resetBtn.addEventListener('click', clearFileSelection);
 // Clear file button
 clearFileBtn.addEventListener('click', clearFileSelection);
 
-// Initialize
+// Initialize steps
 updateSteps(1);
