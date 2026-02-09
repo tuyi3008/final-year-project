@@ -200,7 +200,7 @@ transformBtn.addEventListener('click', async () => {
 
     try {
         // Send request to server
-        const response = await fetch('/api/transform', {
+        const response = await fetch('http://localhost:3000/api/transform', {
             method: 'POST',
             body: formData
         });
@@ -209,8 +209,10 @@ transformBtn.addEventListener('click', async () => {
 
         if (data.success) {
             // Success - update processed image
-            processedImg.src = data.processedUrl;
-            downloadBtn.href = data.processedUrl;
+            const fullUrl = 'http://localhost:3000' + data.processedUrl;
+
+            processedImg.src = fullUrl;
+            downloadBtn.href = fullUrl;
             
             // Set download filename
             const timestamp = new Date().getTime();
