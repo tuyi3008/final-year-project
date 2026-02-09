@@ -17,3 +17,16 @@ node_modules/
 uploads/
 
 .env
+
+tf_env/
+
+styles/
+
+saved_model/
+tfjs_model/
+tfjs_saved_model_for_node/
+
+
+
+
+
