@@ -167,7 +167,7 @@ transformBtn.addEventListener('click', async () => {
     // Prepare form data
     const formData = new FormData();
     formData.append('content', selectedFile); // Matches FastAPI parameter
-    formData.append('style', selectedFile);   // Temporary: use same image as style (replace later if you have style images)
+    formData.append('style', selectedStyle);   // Temporary: use same image as style (replace later if you have style images)
 
     try {
         const response = await fetch('http://127.0.0.1:8000/stylize/', {

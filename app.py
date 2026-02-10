@@ -1,67 +1,121 @@
-# app.py
 import io
 import base64
-from fastapi import FastAPI, UploadFile, File
+import os
+from typing import Dict
+
+import torch
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-import numpy as np
-import tensorflow as tf
-import tensorflow_hub as hub
-import os
+import torchvision.transforms as T
 
-# Initialize FastAPI
-app = FastAPI(title="Style Transfer API")
 
-# Mount the public folder for frontend static files
+# =============================
+# FastAPI init
+# =============================
+app = FastAPI(title="Multi‑Style Transfer API (PyTorch)")
+
+# Serve frontend
 app.mount("/static", StaticFiles(directory="public"), name="static")
 
-# Serve index.html at root
+
 @app.get("/")
 async def root():
     return FileResponse("public/index.html")
 
 
-# Load TensorFlow Hub model (arbitrary style transfer)
-MODEL_URL = "https://tfhub.dev/google/magenta/arbitrary-image-stylization-v1-256/2"
-print("Loading TensorFlow Hub model...")
-hub_model = hub.load(MODEL_URL)
-print("Model loaded successfully!")
+# =============================
+# Image helpers
+# =============================
+transform = T.Compose([
+    T.Resize((256, 256)),
+    T.ToTensor(),
+])
 
 
-# Helper function: Load image as tensor
 def load_image(file: UploadFile):
     img = Image.open(file.file).convert("RGB")
-    img = img.resize((256, 256))
-    img = np.array(img) / 255.0
-    img = img.astype(np.float32)
-    img = np.expand_dims(img, axis=0)
-    return img
+    tensor = transform(img).unsqueeze(0)  # [1, 3, H, W]
+    return tensor
 
 
-# Helper function: Convert tensor to Base64
-def tensor_to_base64(tensor):
-    img = tensor[0]
-    img = np.clip(img * 255, 0, 255).astype(np.uint8)
-    pil_img = Image.fromarray(img)
-    buffered = io.BytesIO()
-    pil_img.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+def tensor_to_base64(tensor: torch.Tensor):
+    tensor = tensor.squeeze(0).clamp(0, 1)
+    img = T.ToPILImage()(tensor.cpu())
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+
+    return base64.b64encode(buffer.getvalue()).decode()
 
 
-# POST endpoint: Upload content and style images
+# =============================
+# Dummy lightweight style models
+# (CPU‑friendly placeholder CNNs)
+# =============================
+class SimpleStyleNet(torch.nn.Module):
+    """Very small CNN just for demo / CPU use."""
+
+    def __init__(self):
+        super().__init__()
+        self.net = torch.nn.Sequential(
+            torch.nn.Conv2d(3, 16, 3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(16, 16, 3, padding=1),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(16, 3, 1),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+# =============================
+# Load models (CPU only)
+# =============================
+STYLE_NAMES = ["sketch", "anime", "ink"]
+models: Dict[str, torch.nn.Module] = {}
+
+print("Loading PyTorch style models...")
+
+for name in STYLE_NAMES:
+    model = SimpleStyleNet()
+
+    model_path = f"models/{name}.pt"
+    if os.path.exists(model_path):
+        model.load_state_dict(torch.load(model_path, map_location="cpu"))
+        print(f"Loaded trained model: {name}")
+    else:
+        print(f"Using untrained demo model for: {name}")
+
+    model.eval()
+    models[name] = model
+
+print("All models ready!\n")
+
+
+# =============================
+# Stylize endpoint
+# =============================
 @app.post("/stylize/")
-async def stylize(content: UploadFile = File(...), style: UploadFile = File(...)):
+async def stylize(
+    content: UploadFile = File(...),
+    style: str = Form(...),
+):
     try:
-        content_image = load_image(content)
-        style_image = load_image(style)
+        if style not in models:
+            return JSONResponse({"error": "Invalid style"}, status_code=400)
 
-        # Run style transfer
-        stylized_image = hub_model(tf.constant(content_image), tf.constant(style_image))[0]
+        content_tensor = load_image(content)
 
-        # Convert to Base64 and return
-        b64_image = tensor_to_base64(stylized_image)
-        return JSONResponse(content={"image_base64": b64_image})
+        with torch.no_grad():
+            output = models[style](content_tensor)
+
+        b64 = tensor_to_base64(output)
+
+        return {"image_base64": b64}
 
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return JSONResponse({"error": str(e)}, status_code=500)
