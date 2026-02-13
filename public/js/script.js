@@ -201,28 +201,28 @@ transformBtn.addEventListener('click', async () => {
 });
 
 // ====================== Authentication Modal (UI Only) ======================
-const loginBtn = document.querySelector('.btn-login');
-if (loginBtn) {
-    loginBtn.addEventListener('click', () => {
-        const authModal = document.getElementById('authModal');
-        if (authModal) {
-            const modal = new bootstrap.Modal(authModal);
-            modal.show();
-        }
-    });
-}
+// const loginBtn = document.querySelector('.btn-login');
+// if (loginBtn) {
+//     loginBtn.addEventListener('click', () => {
+//         const authModal = document.getElementById('authModal');
+//         if (authModal) {
+//             const modal = new bootstrap.Modal(authModal);
+//             modal.show();
+//         }
+//     });
+// }
 
-const loginForm = document.getElementById('loginForm');
-if (loginForm) loginForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    alert('Login feature will be implemented with backend');
-});
+// const loginForm = document.getElementById('loginForm');
+// if (loginForm) loginForm.addEventListener('submit', (e) => {
+//     e.preventDefault();
+//     alert('Login feature will be implemented with backend');
+// });
 
-const registerForm = document.getElementById('registerForm');
-if (registerForm) registerForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    alert('Registration feature will be implemented with backend');
-});
+// const registerForm = document.getElementById('registerForm');
+// if (registerForm) registerForm.addEventListener('submit', (e) => {
+//     e.preventDefault();
+//     alert('Registration feature will be implemented with backend');
+// });
 
 // Reset button
 resetBtn.addEventListener('click', clearFileSelection);
