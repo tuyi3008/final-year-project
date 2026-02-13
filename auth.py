@@ -44,9 +44,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
-def get_user(username: str) -> Optional[UserInDB]:
+def get_user(email: str) -> Optional[UserInDB]:
     for user in fake_users_db:
-        if user["username"] == username:
+        if user["email"] == email:
             return UserInDB(**user)
     return None
 
@@ -65,21 +65,21 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
     
-    user = get_user(username)
+    user = get_user(email)
     if user is None:
         raise credentials_exception
     return user
 
 # ==================== Authentication Interface Functions (For app.py route registration) ====================
 def register_user(user: UserCreate):
-    if get_user(user.username):
-        raise HTTPException(status_code=400, detail="Username already registered")
+    if get_user(user.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
     fake_users_db.append({
         "username": user.username,
         "email": user.email,
@@ -96,7 +96,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token = create_access_token(
-        data={"sub": user.username},
+        data={"sub": user.email},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     return {"access_token": access_token, "token_type": "bearer"}
