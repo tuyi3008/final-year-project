@@ -338,6 +338,18 @@ class AuthManager {
         if (usernameSpan && isLoggedIn) {
             usernameSpan.textContent = localStorage.getItem('userEmail') || 'User';
         }
+
+        const logoutBtn = document.querySelector('.btn-logout');
+        if (logoutBtn) {
+            // remove old listener to prevent duplicates
+            logoutBtn.removeEventListener('click', this.logout);
+            // add new listener
+            logoutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.logout();
+            });
+            console.log('Logout button event attached');
+        }
     }
     
     logout() {
