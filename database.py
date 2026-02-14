@@ -17,10 +17,17 @@ class MongoDB:
 mongodb = MongoDB()
 
 async def connect_to_mongo():
-    """Connected to MongoDB"""
+    """Connect to MongoDB"""
     mongodb.client = AsyncIOMotorClient(MONGODB_URL)
     mongodb.database = mongodb.client[DB_NAME]
     print(f"✅ Successfully connected to MongoDB, database: {DB_NAME}")
+    
+    # Test connection
+    try:
+        await mongodb.client.admin.command('ping')
+        print("✅ MongoDB ping successful")
+    except Exception as e:
+        print(f"❌ MongoDB ping failed: {e}")
 
 async def close_mongo_connection():
     """Close MongoDB connection"""
@@ -31,3 +38,8 @@ async def close_mongo_connection():
 # Dependency to get the database instance
 def get_db():
     return mongodb.database
+
+# Helper to get users collection
+def get_users_collection():
+    db = get_db()
+    return db["users"] if db else None

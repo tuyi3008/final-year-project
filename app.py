@@ -11,8 +11,8 @@ from PIL import Image
 import torchvision.transforms as T
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Import database connection functions
+from database import connect_to_mongo, close_mongo_connection
 
 # Import authentication functions and models
 from auth import (
@@ -24,12 +24,32 @@ from auth import (
     OAuth2PasswordRequestForm
 )
 
+# Load environment variables from .env file
+load_dotenv()
+
 # =============================
 # FastAPI init
 # =============================
 app = FastAPI(title="Multi-Style Transfer API (PyTorch)")
 
+# =============================
+# Database lifecycle management
+# =============================
+@app.on_event("startup")
+async def startup_event():
+    """Connect to MongoDB when the application starts"""
+    await connect_to_mongo()
+    print("✅ Application startup complete")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close MongoDB connection when the application shuts down"""
+    await close_mongo_connection()
+    print("✅ Application shutdown complete")
+
+# =============================
 # Serve frontend
+# =============================
 app.mount("/static", StaticFiles(directory="public"), name="static")
 
 # =============================
@@ -37,11 +57,11 @@ app.mount("/static", StaticFiles(directory="public"), name="static")
 # =============================
 @app.post("/register", summary="User registration")
 async def register(user: UserCreate):
-    return register_user(user)
+    return await register_user(user)
 
 @app.post("/login", summary="User login to get token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    return login_for_access_token(form_data)
+    return await login_for_access_token(form_data)
 
 @app.get("/profile", summary="Get current user info (login required)")
 async def get_profile(current_user: UserInDB = Depends(get_current_user)):
@@ -49,8 +69,13 @@ async def get_profile(current_user: UserInDB = Depends(get_current_user)):
         "code": 200,
         "username": current_user.username,
         "email": current_user.email,
+        "id": current_user.id,
         "msg": "Logged in"
     }
+
+# =============================
+# Page routes
+# =============================
 @app.get("/")
 @app.get("/index")
 @app.get("/index.html")
@@ -75,12 +100,10 @@ async def profile():
 # =============================
 # Public interfaces (no login required)
 # =============================
-
 @app.post("/stylize/")
 async def stylize(
     content: UploadFile = File(...),
     style: str = Form(...)
-    # Note: No Depends(get_current_user), so login is NOT required
 ):
     try:
         if style not in models:
@@ -93,7 +116,6 @@ async def stylize(
 
         b64 = tensor_to_base64(output)
 
-        # Return without user information
         return {"image_base64": b64}
 
     except Exception as e:
@@ -109,7 +131,7 @@ transform = T.Compose([
 
 def load_image(file: UploadFile):
     img = Image.open(file.file).convert("RGB")
-    tensor = transform(img).unsqueeze(0)  # [1, 3, H, W]
+    tensor = transform(img).unsqueeze(0)
     return tensor
 
 def tensor_to_base64(tensor: torch.Tensor):
