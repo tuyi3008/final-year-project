@@ -26,6 +26,13 @@ saved_model/
 tfjs_model/
 tfjs_saved_model_for_node/
 
+# IDE
+.vscode/
+.idea/
+
+# Docker data
+docker-data/
+
 
 
 
