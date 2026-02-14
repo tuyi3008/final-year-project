@@ -51,13 +51,30 @@ async def get_profile(current_user: UserInDB = Depends(get_current_user)):
         "email": current_user.email,
         "msg": "Logged in"
     }
+@app.get("/")
+@app.get("/index")
+@app.get("/index.html")
+async def index():
+    return FileResponse("public/index.html")
+
+@app.get("/gallery")
+@app.get("/gallery.html")
+async def gallery():
+    return FileResponse("public/gallery.html")
+
+@app.get("/community")
+@app.get("/community.html")
+async def community():
+    return FileResponse("public/community.html")
+
+@app.get("/profile")
+@app.get("/profile.html")
+async def profile():
+    return FileResponse("public/profile.html")
 
 # =============================
 # Public interfaces (no login required)
 # =============================
-@app.get("/")
-async def root():
-    return FileResponse("public/index.html")
 
 @app.post("/stylize/")
 async def stylize(
