@@ -334,10 +334,10 @@ class AuthManager {
         });
         
         // Show username if element exists
-        const usernameSpan = document.getElementById('currentUsername');
-        if (usernameSpan && isLoggedIn) {
-            usernameSpan.textContent = localStorage.getItem('userEmail') || 'User';
-        }
+        // const usernameSpan = document.getElementById('currentUsername');
+        // if (usernameSpan && isLoggedIn) {
+        //     usernameSpan.textContent = localStorage.getItem('userEmail') || 'User';
+        // }
 
         const logoutBtn = document.querySelector('.btn-logout');
         if (logoutBtn) {
