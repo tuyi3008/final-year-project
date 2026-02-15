@@ -166,14 +166,30 @@ transformBtn.addEventListener('click', async () => {
 
     // Prepare form data
     const formData = new FormData();
-    formData.append('content', selectedFile); // Matches FastAPI parameter
-    formData.append('style', selectedStyle);   // Temporary: use same image as style (replace later if you have style images)
+    formData.append('content', selectedFile);
+    formData.append('style', selectedStyle);
 
     try {
+        // ===== 简化版：直接获取 token 并构造 headers =====
+        const token = localStorage.getItem('token');
+        console.log('Token from localStorage:', token ? token.substring(0, 20) + '...' : 'No token');
+        
+        // 直接构造请求
         const response = await fetch('http://127.0.0.1:8000/stylize/', {
             method: 'POST',
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {},  // 直接在这里定义 headers
             body: formData
         });
+
+        console.log('Response status:', response.status);
+
+        if (response.status === 401) {
+            showAlert('error', 'Please login to transform images');
+            if (window.auth) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
 
         const data = await response.json();
 
@@ -199,7 +215,6 @@ transformBtn.addEventListener('click', async () => {
         transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
     }
 });
-
 // ====================== Authentication Modal (UI Only) ======================
 // const loginBtn = document.querySelector('.btn-login');
 // if (loginBtn) {

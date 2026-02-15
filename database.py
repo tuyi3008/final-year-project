@@ -43,3 +43,10 @@ def get_db():
 def get_users_collection():
     db = get_db()
     return db["users"] if db else None
+
+# Helper to get history collection
+def get_history_collection():
+    db = get_db()
+    if db is None:
+        return None
+    return db["history"]

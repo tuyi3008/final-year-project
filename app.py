@@ -1,18 +1,21 @@
 import io
 import base64
 import os
+import uuid
+from datetime import datetime
 from typing import Dict
 
 import torch
 from fastapi import FastAPI, UploadFile, File, Form, Depends
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import torchvision.transforms as T
 from dotenv import load_dotenv
 
 # Import database connection functions
-from database import connect_to_mongo, close_mongo_connection
+from database import connect_to_mongo, close_mongo_connection, get_db
 
 # Import authentication functions and models
 from auth import (
@@ -31,6 +34,21 @@ load_dotenv()
 # FastAPI init
 # =============================
 app = FastAPI(title="Multi-Style Transfer API (PyTorch)")
+
+# =============================
+# CORS middleware configuration
+# =============================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create uploads directory if not exists
+os.makedirs("uploads/originals", exist_ok=True)
+os.makedirs("uploads/transformed", exist_ok=True)
 
 # =============================
 # Database lifecycle management
@@ -98,28 +116,114 @@ async def profile():
     return FileResponse("public/profile.html")
 
 # =============================
+# History routes
+# =============================
+@app.get("/history", summary="Get user transformation history")
+async def get_user_history(current_user: UserInDB = Depends(get_current_user)):
+    """Get user's transformation history"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get history from database, sorted by created_at descending, limit 20
+        cursor = db.history.find({"user_id": current_user.id}).sort("created_at", -1).limit(20)
+        history = await cursor.to_list(length=20)
+        
+        # Convert ObjectId to string for JSON serialization
+        for item in history:
+            item["_id"] = str(item["_id"])
+        
+        return {"code": 200, "history": history}
+    
+    except Exception as e:
+        print(f"Error loading history: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+# =============================
 # Public interfaces (no login required)
 # =============================
 @app.post("/stylize/")
 async def stylize(
     content: UploadFile = File(...),
-    style: str = Form(...)
+    style: str = Form(...),
+    current_user: UserInDB = Depends(get_current_user)  # Optional, None if not logged in
 ):
     try:
         if style not in models:
             return JSONResponse({"error": "Invalid style"}, status_code=400)
 
+        # Read original image bytes for saving
+        original_bytes = await content.read()
+        await content.seek(0)  # Reset file pointer for load_image
+        
+        # Process image
         content_tensor = load_image(content)
 
         with torch.no_grad():
             output = models[style](content_tensor)
 
         b64 = tensor_to_base64(output)
+        
+        # ========== Save history if user is logged in ==========
+        if current_user:
+            try:
+                # Generate unique filenames
+                file_id = str(uuid.uuid4())
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Original image
+                original_filename = f"{current_user.id}_{timestamp}_{file_id}_original.jpg"
+                original_path = f"uploads/originals/{original_filename}"
+                
+                # Result image
+                result_filename = f"{current_user.id}_{timestamp}_{file_id}_{style}.png"
+                result_path = f"uploads/transformed/{result_filename}"
+                
+                # Save original image
+                with open(original_path, "wb") as f:
+                    f.write(original_bytes)
+                
+                # Save result image (convert base64 back to image)
+                image_data = base64.b64decode(b64)
+                result_image = Image.open(io.BytesIO(image_data))
+                result_image.save(result_path, "PNG")
+                
+                # Get database connection
+                db = get_db()
+                
+                # Create history record
+                history_record = {
+                    "user_id": current_user.id,
+                    "user_email": current_user.email,
+                    "username": current_user.username,
+                    "style": style,
+                    "original_image_path": original_path,
+                    "result_image_path": result_path,
+                    "original_filename": original_filename,
+                    "result_filename": result_filename,
+                    "file_size": len(original_bytes),
+                    "created_at": datetime.utcnow()
+                }
+                
+                # Insert into history collection
+                await db.history.insert_one(history_record)
+                print(f"✅ History saved for user: {current_user.email}")
+                
+            except Exception as e:
+                print(f"⚠️ History save failed (non-critical): {e}")
+        # =======================================================
 
         return {"image_base64": b64}
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+# =============================
+# Serve uploaded files (for development)
+# =============================
+from fastapi.staticfiles import StaticFiles
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # =============================
 # Image helpers

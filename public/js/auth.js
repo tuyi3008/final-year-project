@@ -381,3 +381,7 @@ const auth = new AuthManager();
 
 // Make auth available globally
 window.auth = auth;
+
+console.log('Before window.auth assignment, auth exists:', !!auth);
+window.auth = auth;
+console.log('After assignment, window.auth exists:', !!window.auth);
