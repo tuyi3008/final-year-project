@@ -1,4 +1,3 @@
-# database.py
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
@@ -6,8 +5,8 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-# MongoDB configuration
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+# MongoDB configuration - use correct default values
+MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://admin:admin123@localhost:27017/?authSource=admin")
 DB_NAME = os.getenv("DB_NAME", "styletrans_db")
 
 class MongoDB:
@@ -18,16 +17,21 @@ mongodb = MongoDB()
 
 async def connect_to_mongo():
     """Connect to MongoDB"""
-    mongodb.client = AsyncIOMotorClient(MONGODB_URL)
-    mongodb.database = mongodb.client[DB_NAME]
-    print(f"✅ Successfully connected to MongoDB, database: {DB_NAME}")
-    
-    # Test connection
     try:
+        print(f"Connecting to MongoDB...")
+        print(f"Using URL: {MONGODB_URL.replace('admin123', '******')}")
+        
+        mongodb.client = AsyncIOMotorClient(MONGODB_URL)
+        mongodb.database = mongodb.client[DB_NAME]
+        print(f"✅ Successfully connected to MongoDB, database: {DB_NAME}")
+        
+        # Test connection
         await mongodb.client.admin.command('ping')
         print("✅ MongoDB ping successful")
+        
     except Exception as e:
-        print(f"❌ MongoDB ping failed: {e}")
+        print(f"❌ MongoDB connection failed: {e}")
+        print(f"Please check the MongoDB connection configuration")
 
 async def close_mongo_connection():
     """Close MongoDB connection"""

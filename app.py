@@ -163,6 +163,9 @@ async def stylize(
         with torch.no_grad():
             output = models[style](content_tensor)
 
+        # Debug: print output range
+        print(f"Output range for {style}: min={output.min():.3f}, max={output.max():.3f}, mean={output.mean():.3f}")
+
         b64 = tensor_to_base64(output)
         
         # ========== Save history if user is logged in ==========
@@ -238,7 +241,15 @@ def load_image(file: UploadFile):
     return tensor
 
 def tensor_to_base64(tensor: torch.Tensor):
-    tensor = tensor.squeeze(0).clamp(0, 1)
+    """Convert model output tensor to base64 image string"""
+    tensor = tensor.squeeze(0)  # Remove batch dimension
+    
+    # Normalize to [0, 1] range
+    tensor_min = tensor.min()
+    tensor_max = tensor.max()
+    tensor = (tensor - tensor_min) / (tensor_max - tensor_min + 1e-8)
+    
+    # Convert to PIL Image
     img = T.ToPILImage()(tensor.cpu())
 
     buffer = io.BytesIO()
@@ -340,6 +351,15 @@ models: Dict[str, torch.nn.Module] = {}
 
 print("Loading PyTorch style models...")
 
+def filter_state_dict(state_dict):
+    """Remove running_mean and running_var keys from state_dict"""
+    filtered = {}
+    for key, value in state_dict.items():
+        # Skip keys that end with running_mean or running_var
+        if not (key.endswith('running_mean') or key.endswith('running_var')):
+            filtered[key] = value
+    return filtered
+
 for name in STYLE_NAMES:
     # Use TransformerNet instead of SimpleStyleNet
     model = TransformerNet()
@@ -355,11 +375,14 @@ for name in STYLE_NAMES:
             print(f"✅ Loaded trained model: {name}")
             
         except RuntimeError as e:
-            # If strict loading fails, try with strict=False (ignores running stats)
-            print(f"⚠️ Version mismatch for {name}, using strict=False")
+            # If strict loading fails, filter the state_dict and try with strict=False
+            print(f"⚠️ Version mismatch for {name}, filtering state_dict...")
             try:
-                model.load_state_dict(state_dict, strict=False)
-                print(f"✅ Loaded trained model: {name} (with strict=False)")
+                # Filter out problematic keys
+                filtered_dict = filter_state_dict(state_dict)
+                model.load_state_dict(filtered_dict, strict=False)
+                print(f"✅ Loaded trained model: {name} (with filtered state_dict)")
+                print(f"   Removed {len(state_dict) - len(filtered_dict)} unexpected keys")
             except Exception as e2:
                 print(f"❌ Failed to load model {name}: {e2}")
                 print(f"Using untrained demo model for: {name}")
