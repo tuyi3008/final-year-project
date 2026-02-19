@@ -27,7 +27,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # ==================== Password Encryption ====================
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
 
 # ==================== Data Models ====================
 class UserCreate(BaseModel):
@@ -82,21 +82,56 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # ==================== Core Authentication Functions ====================
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Optional[UserInDB]:
+    """
+    Get current user from token.
+    Returns UserInDB if token is valid, None if no token or invalid token.
+    This function never raises HTTPException.
+    """
+    print(f"🔍 get_current_user called with token: {token[:20] if token else 'None'}...")
+    
+    # If no token provided, return None (anonymous user)
+    if not token:
+        print("ℹ️ No token provided, returning None (anonymous user)")
+        return None
+    
+    try:
+        # Try to decode the token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(f"✅ Token decoded successfully: {payload}")
+        
+        email: str = payload.get("sub")
+        if email is None:
+            print("⚠️ No email in token, returning None")
+            return None
+        
+        # Get user from database
+        user = await get_user(email)
+        if user is None:
+            print(f"⚠️ User not found for email: {email}, returning None")
+            return None
+            
+        print(f"✅ Authenticated user: {user.email}")
+        return user
+        
+    except JWTError as e:
+        # Token invalid, but don't raise exception - just return None
+        print(f"⚠️ JWT decode error: {e}, returning None (anonymous user)")
+        return None
+
+# Optional: Keep a strict version if needed elsewhere
+async def get_current_user_strict(token: str = Depends(oauth2_scheme)) -> UserInDB:
+    """
+    Strict version that requires authentication.
+    Use this for endpoints that absolutely need login.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
     
-    user = await get_user(email)
+    user = await get_current_user(token)
     if user is None:
         raise credentials_exception
     return user

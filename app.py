@@ -242,14 +242,15 @@ async def stylize(
     current_user: UserInDB = Depends(get_current_user)  # Optional, None if not logged in
 ):
     try:
+        # Validate style
         if style not in models:
             return JSONResponse({"error": "Invalid style"}, status_code=400)
 
-        # Read original image bytes for saving
+        # Read original image bytes for potential saving
         original_bytes = await content.read()
         await content.seek(0)  # Reset file pointer for load_image
         
-        # Process image
+        # Process image through style transfer model
         content_tensor = load_image(content)
 
         with torch.no_grad():
@@ -258,28 +259,28 @@ async def stylize(
         # Debug: print output range
         print(f"Output range for {style}: min={output.min():.3f}, max={output.max():.3f}, mean={output.mean():.3f}")
 
+        # Convert tensor to base64 string
         b64 = tensor_to_base64(output)
         
-        # ========== Save history if user is logged in ==========
+        # ========== Save to history ONLY for authenticated users ==========
         if current_user:
             try:
-                # Generate unique filenames
+                # Generate unique identifiers for files
                 file_id = str(uuid.uuid4())
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 
-                # Original image
+                # Save original image
                 original_filename = f"{current_user.id}_{timestamp}_{file_id}_original.jpg"
                 original_path = f"uploads/originals/{original_filename}"
                 
-                # Result image
-                result_filename = f"{current_user.id}_{timestamp}_{file_id}_{style}.png"
-                result_path = f"uploads/transformed/{result_filename}"
-                
-                # Save original image
                 with open(original_path, "wb") as f:
                     f.write(original_bytes)
                 
-                # Save result image (convert base64 back to image)
+                # Save transformed result image
+                result_filename = f"{current_user.id}_{timestamp}_{file_id}_{style}.png"
+                result_path = f"uploads/transformed/{result_filename}"
+                
+                # Convert base64 back to image and save
                 image_data = base64.b64decode(b64)
                 result_image = Image.open(io.BytesIO(image_data))
                 result_image.save(result_path, "PNG")
@@ -287,7 +288,7 @@ async def stylize(
                 # Get database connection
                 db = get_db()
                 
-                # Create history record
+                # Create history record for database
                 history_record = {
                     "user_id": current_user.id,
                     "user_email": current_user.email,
@@ -301,17 +302,24 @@ async def stylize(
                     "created_at": datetime.utcnow()
                 }
                 
-                # Insert into history collection
+                # Insert into MongoDB history collection
                 await db.history.insert_one(history_record)
-                print(f"✅ History saved for user: {current_user.email}")
+                print(f"✅ History saved for authenticated user: {current_user.email}")
                 
             except Exception as e:
-                print(f"⚠️ History save failed (non-critical): {e}")
-        # =======================================================
+                # Non-critical error - don't fail the request, just log it
+                print(f"⚠️ Failed to save history (non-critical): {e}")
+        else:
+            # Anonymous user - skip database save
+            print(f"ℹ️ Anonymous user request - history not saved")
+        # ================================================================
 
+        # Return transformed image to client
         return {"image_base64": b64}
 
     except Exception as e:
+        # Log error and return 500 response
+        print(f"❌ Error during image transformation: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 # =============================

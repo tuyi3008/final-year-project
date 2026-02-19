@@ -255,16 +255,16 @@ transformBtn.addEventListener('click', async () => {
 
         console.log('Response status:', response.status);
 
-        if (response.status === 401) {
-            showAlert('error', 'Please login to transform images');
-            if (window.auth && window.auth.showLoginModal) {
-                window.auth.showLoginModal();
-            }
-            transformBtn.disabled = false;
-            transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
-            loadingOverlay.style.display = 'none';
-            return;
-        }
+        // if (response.status === 401) {
+        //     showAlert('error', 'Please login to transform images');
+        //     if (window.auth && window.auth.showLoginModal) {
+        //         window.auth.showLoginModal();
+        //     }
+        //     transformBtn.disabled = false;
+        //     transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
+        //     loadingOverlay.style.display = 'none';
+        //     return;
+        // }
 
         const data = await response.json();
 
