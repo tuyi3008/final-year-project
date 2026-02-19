@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Dict
 
 import torch
-from fastapi import FastAPI, UploadFile, File, Form, Depends
+from fastapi import FastAPI, UploadFile, File, Form, Depends, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -226,6 +226,137 @@ async def stylize(
 # Serve uploaded files (for development)
 # =============================
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+
+# =============================
+# Favorite routes
+# =============================
+@app.post("/favorites/add", summary="Add image to favorites")
+async def add_to_favorites(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Add a transformed image to user's favorites"""
+    try:
+        data = await request.json()
+        image_path = data.get('image_path')
+        style = data.get('style')
+        
+        if not image_path or not style:
+            return JSONResponse({"code": 400, "error": "Missing image_path or style"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Check if already in favorites
+        existing = await db.favorites.find_one({
+            "user_id": current_user.id,
+            "image_path": image_path
+        })
+        
+        if existing:
+            return JSONResponse({"code": 400, "error": "Already in favorites"}, status_code=400)
+        
+        # Add to favorites
+        favorite_record = {
+            "user_id": current_user.id,
+            "user_email": current_user.email,
+            "username": current_user.username,
+            "image_path": image_path,
+            "style": style,
+            "original_filename": data.get('original_filename'),
+            "result_filename": data.get('result_filename'),
+            "created_at": datetime.utcnow()
+        }
+        
+        result = await db.favorites.insert_one(favorite_record)
+        
+        return {
+            "code": 200,
+            "message": "Added to favorites",
+            "favorite_id": str(result.inserted_id)
+        }
+        
+    except Exception as e:
+        print(f"Error adding to favorites: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.delete("/favorites/remove", summary="Remove from favorites")
+async def remove_from_favorites(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Remove an image from favorites"""
+    try:
+        data = await request.json()
+        image_path = data.get('image_path')
+        
+        if not image_path:
+            return JSONResponse({"code": 400, "error": "Missing image_path"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Remove from favorites
+        result = await db.favorites.delete_one({
+            "user_id": current_user.id,
+            "image_path": image_path
+        })
+        
+        if result.deleted_count > 0:
+            return {"code": 200, "message": "Removed from favorites"}
+        else:
+            return JSONResponse({"code": 404, "error": "Favorite not found"}, status_code=404)
+        
+    except Exception as e:
+        print(f"Error removing from favorites: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.get("/favorites", summary="Get user's favorites")
+async def get_favorites(current_user: UserInDB = Depends(get_current_user)):
+    """Get user's favorite images"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get favorites from database
+        cursor = db.favorites.find({"user_id": current_user.id}).sort("created_at", -1)
+        favorites = await cursor.to_list(length=100)
+        
+        # Convert ObjectId to string
+        for item in favorites:
+            item["_id"] = str(item["_id"])
+        
+        return {"code": 200, "favorites": favorites}
+        
+    except Exception as e:
+        print(f"Error loading favorites: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.get("/favorites/check", summary="Check if image is favorited")
+async def check_favorite(
+    image_path: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Check if an image is in user's favorites"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        favorite = await db.favorites.find_one({
+            "user_id": current_user.id,
+            "image_path": image_path
+        })
+        
+        return {"code": 200, "is_favorite": favorite is not None}
+        
+    except Exception as e:
+        print(f"Error checking favorite: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
 # Image helpers
