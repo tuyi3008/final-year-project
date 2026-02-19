@@ -1,52 +1,7 @@
 // gallery.js - Gallery with Filter Functionality
 
-// Sample gallery data
-const galleryData = [
-    {
-        id: 1,
-        title: "Urban Sketch",
-        author: "User123",
-        style: "sketch",
-        image: "https://via.placeholder.com/400x300/6366f1/ffffff?text=Sketch+Example"
-    },
-    {
-        id: 2,
-        title: "Anime Art",
-        author: "AnimeFan",
-        style: "anime", 
-        image: "https://via.placeholder.com/400x300/f59e0b/ffffff?text=Anime+Example"
-    },
-    {
-        id: 3,
-        title: "Ink Painting",
-        author: "InkMaster",
-        style: "ink",
-        image: "https://via.placeholder.com/400x300/10b981/ffffff?text=Ink+Example"
-    },
-    {
-        id: 4,
-        title: "City Sketch",
-        author: "SketchArtist",
-        style: "sketch",
-        image: "https://via.placeholder.com/400x300/6366f1/ffffff?text=Sketch+2"
-    },
-    {
-        id: 5,
-        title: "Fantasy Anime",
-        author: "FantasyFan",
-        style: "anime",
-        image: "https://via.placeholder.com/400x300/f59e0b/ffffff?text=Anime+2"
-    },
-    {
-        id: 6,
-        title: "Mountain Ink",
-        author: "NatureArtist",
-        style: "ink",
-        image: "https://via.placeholder.com/400x300/10b981/ffffff?text=Ink+2"
-    }
-];
-
 let currentFilter = 'all';
+let galleryData = []; // Will be populated from backend
 
 // Function to filter gallery items
 function filterGallery(filter) {
@@ -64,24 +19,113 @@ function renderGallery(data = galleryData) {
     
     if (!galleryGrid) return;
     
+    if (data.length === 0) {
+        galleryGrid.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <i class="bi bi-images display-1 text-muted mb-3"></i>
+                <h4 class="text-muted">No images in gallery yet</h4>
+                <p class="text-muted">Be the first to publish your creations!</p>
+            </div>
+        `;
+        return;
+    }
+    
     galleryGrid.innerHTML = '';
     
     data.forEach(item => {
         const col = document.createElement('div');
-        col.className = 'col-md-4';
+        col.className = 'col-md-4 col-lg-3';
+        
+        // Format date
+        const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date';
         
         col.innerHTML = `
             <div class="gallery-item">
-                <img src="${item.image}" alt="${item.title}">
+                <img src="/${item.image_path}" alt="${item.style} style">
                 <div class="gallery-info">
-                    <h5>${item.title}</h5>
-                    <p>By ${item.author} • ${item.style}</p>
+                    <h6 class="mb-1">${item.style.charAt(0).toUpperCase() + item.style.slice(1)} Style</h6>
+                    <p class="small text-muted mb-1">
+                        <i class="bi bi-person-circle me-1"></i>${item.username || 'Anonymous'}
+                    </p>
+                    <p class="small text-muted mb-2">
+                        <i class="bi bi-calendar3 me-1"></i>${date}
+                    </p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-primary">${item.likes || 0} ❤️</span>
+                        <span class="badge bg-secondary">${item.views || 0} 👁️</span>
+                    </div>
                 </div>
             </div>
         `;
         
         galleryGrid.appendChild(col);
     });
+    
+    // Update stats
+    updateStats();
+}
+
+// Function to update stats (total images per style)
+function updateStats() {
+    const totalCount = galleryData.length;
+    const sketchCount = galleryData.filter(item => item.style === 'sketch').length;
+    const animeCount = galleryData.filter(item => item.style === 'anime').length;
+    const inkCount = galleryData.filter(item => item.style === 'ink').length;
+    
+    // Update counters if they exist in DOM
+    const totalEl = document.getElementById('total-count');
+    if (totalEl) totalEl.textContent = totalCount;
+    
+    const sketchEl = document.getElementById('sketch-count');
+    if (sketchEl) sketchEl.textContent = sketchCount;
+    
+    const animeEl = document.getElementById('anime-count');
+    if (animeEl) animeEl.textContent = animeCount;
+    
+    const inkEl = document.getElementById('ink-count');
+    if (inkEl) inkEl.textContent = inkCount;
+}
+
+// Function to load gallery images from backend
+async function loadGalleryFromBackend() {
+    const galleryGrid = document.getElementById('gallery-grid');
+    
+    try {
+        // Show loading state
+        galleryGrid.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3 text-muted">Loading gallery...</p>
+            </div>
+        `;
+        
+        const response = await fetch('/gallery/images');
+        const data = await response.json();
+        
+        if (data.code === 200 && data.images && data.images.length > 0) {
+            galleryData = data.images;
+            renderGallery();
+        } else {
+            galleryGrid.innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <i class="bi bi-images display-1 text-muted mb-3"></i>
+                    <h4 class="text-muted">No images in gallery yet</h4>
+                    <p class="text-muted">Be the first to publish your creations!</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading gallery:', error);
+        galleryGrid.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <i class="bi bi-exclamation-triangle display-1 text-muted mb-3"></i>
+                <h4 class="text-muted">Failed to load gallery</h4>
+                <p class="text-muted">Please try again later</p>
+            </div>
+        `;
+    }
 }
 
 // Setup filter button events
@@ -105,6 +149,6 @@ function setupFilterButtons() {
 
 // Initialize gallery when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    renderGallery();
+    loadGalleryFromBackend();
     setupFilterButtons();
 });

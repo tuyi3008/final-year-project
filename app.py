@@ -139,6 +139,98 @@ async def get_user_history(current_user: UserInDB = Depends(get_current_user)):
     except Exception as e:
         print(f"Error loading history: {e}")
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+    
+@app.get("/gallery/images", summary="Get all gallery images")
+async def get_gallery_images():
+    """Get all published gallery images"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get all images from gallery, sorted by newest first
+        cursor = db.gallery.find().sort("created_at", -1).limit(50)
+        images = await cursor.to_list(length=50)
+        
+        # Convert ObjectId to string for JSON serialization
+        for img in images:
+            img["_id"] = str(img["_id"])
+        
+        print(f"Found {len(images)} gallery images")  # Debug log
+        
+        return {"code": 200, "images": images}
+        
+    except Exception as e:
+        print(f"Error loading gallery: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.post("/gallery/publish", summary="Publish image to gallery")
+async def publish_to_gallery(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Publish a transformed image to the public gallery"""
+    try:
+        data = await request.json()
+        image_base64 = data.get('image_base64')
+        style = data.get('style')
+        title = data.get('title', 'Untitled')
+        description = data.get('description', '')
+        
+        if not image_base64 or not style:
+            return JSONResponse({"code": 400, "error": "Missing image or style"}, status_code=400)
+        
+        # Generate filename
+        import uuid
+        from datetime import datetime
+        import base64
+        from PIL import Image
+        import io
+        
+        file_id = str(uuid.uuid4())
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"gallery_{current_user.id}_{timestamp}_{file_id}_{style}.png"
+        filepath = f"uploads/gallery/{filename}"
+        
+        # Ensure directory exists
+        os.makedirs("uploads/gallery", exist_ok=True)
+        
+        # Save image
+        image_data = base64.b64decode(image_base64)
+        image = Image.open(io.BytesIO(image_data))
+        image.save(filepath, "PNG")
+        
+        # Save to database
+        db = get_db()
+        gallery_record = {
+            "user_id": current_user.id,
+            "user_email": current_user.email,
+            "username": current_user.username,
+            "style": style,
+            "title": title,
+            "description": description,
+            "image_path": filepath,
+            "filename": filename,
+            "likes": 0,
+            "views": 0,
+            "created_at": datetime.utcnow()
+        }
+        
+        result = await db.gallery.insert_one(gallery_record)
+        
+        return {
+            "code": 200,
+            "message": "Published to gallery successfully",
+            "gallery_id": str(result.inserted_id)
+        }
+        
+    except Exception as e:
+        print(f"Publish error: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
 # Public interfaces (no login required)

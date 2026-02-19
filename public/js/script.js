@@ -7,6 +7,7 @@ const originalImg = document.getElementById('original-img');
 const processedImg = document.getElementById('processed-img');
 const loadingOverlay = document.getElementById('loading-spinner');
 const downloadBtn = document.getElementById('download-btn');
+const publishBtn = document.getElementById('publish-btn');
 const styleSelect = document.getElementById('style-select');
 const fileInfo = document.getElementById('file-info');
 const filenameSpan = document.getElementById('filename');
@@ -21,6 +22,7 @@ const steps = document.querySelectorAll('.step');
 // ====================== State Variables ======================
 let selectedFile = null;
 let selectedStyle = 'sketch';
+let currentProcessedImage = null; // Store the processed image base64 for publishing
 
 // ====================== Helper Functions ======================
 
@@ -114,6 +116,7 @@ function selectStyleCard(style) {
 // Clear selected file and reset UI
 function clearFileSelection() {
     selectedFile = null;
+    currentProcessedImage = null;
     fileInput.value = '';
     fileInfo.classList.add('d-none');
     styleSection.style.display = 'none';
@@ -121,7 +124,77 @@ function clearFileSelection() {
     resultSection.style.display = 'none';
     transformBtn.disabled = true;
     transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
+    
+    // Hide action buttons
+    if (downloadBtn) downloadBtn.style.display = 'none';
+    if (publishBtn) {
+        publishBtn.style.display = 'none';
+        publishBtn.disabled = false;
+        publishBtn.innerHTML = '<i class="bi bi-share me-2"></i> Publish to Gallery';
+    }
+    
     updateSteps(1);
+}
+
+// ====================== Publish Functionality ======================
+async function handlePublish() {
+    if (!currentProcessedImage || !selectedStyle) {
+        showAlert('error', 'No image to publish');
+        return;
+    }
+    
+    // Check if user is logged in
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showAlert('error', 'Please login to publish to gallery');
+        if (window.auth && window.auth.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
+    try {
+        // Show loading state
+        publishBtn.disabled = true;
+        publishBtn.innerHTML = '<i class="bi bi-hourglass me-2"></i> Publishing...';
+        
+        const response = await fetch('http://127.0.0.1:8000/gallery/publish', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                image_base64: currentProcessedImage,
+                style: selectedStyle,
+                title: `My ${selectedStyle} creation`,
+                description: `Created with StyleTrans AI on ${new Date().toLocaleDateString()}`
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.code === 200) {
+            showAlert('success', '✨ Published to gallery successfully!');
+            publishBtn.innerHTML = '<i class="bi bi-check-circle me-2"></i> Published!';
+            
+            // Reset button text after 3 seconds
+            setTimeout(() => {
+                if (publishBtn && !publishBtn.disabled) {
+                    publishBtn.innerHTML = '<i class="bi bi-share me-2"></i> Publish to Gallery';
+                }
+            }, 3000);
+        } else {
+            showAlert('error', data.error || 'Failed to publish');
+            publishBtn.innerHTML = '<i class="bi bi-share me-2"></i> Publish to Gallery';
+        }
+    } catch (error) {
+        console.error('Publish error:', error);
+        showAlert('error', 'Network error. Please try again.');
+        publishBtn.innerHTML = '<i class="bi bi-share me-2"></i> Publish to Gallery';
+    } finally {
+        publishBtn.disabled = false;
+    }
 }
 
 // ====================== Event Listeners ======================
@@ -162,6 +235,7 @@ transformBtn.addEventListener('click', async () => {
     loadingOverlay.style.display = 'flex';
     resultSection.style.display = 'block';
     downloadBtn.style.display = 'none';
+    if (publishBtn) publishBtn.style.display = 'none';
     updateSteps(3);
 
     // Prepare form data
@@ -170,14 +244,12 @@ transformBtn.addEventListener('click', async () => {
     formData.append('style', selectedStyle);
 
     try {
-        // ===== 简化版：直接获取 token 并构造 headers =====
         const token = localStorage.getItem('token');
         console.log('Token from localStorage:', token ? token.substring(0, 20) + '...' : 'No token');
-        
-        // 直接构造请求
+
         const response = await fetch('http://127.0.0.1:8000/stylize/', {
             method: 'POST',
-            headers: token ? { 'Authorization': 'Bearer ' + token } : {},  // 直接在这里定义 headers
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {},
             body: formData
         });
 
@@ -185,9 +257,12 @@ transformBtn.addEventListener('click', async () => {
 
         if (response.status === 401) {
             showAlert('error', 'Please login to transform images');
-            if (window.auth) {
+            if (window.auth && window.auth.showLoginModal) {
                 window.auth.showLoginModal();
             }
+            transformBtn.disabled = false;
+            transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
+            loadingOverlay.style.display = 'none';
             return;
         }
 
@@ -197,10 +272,20 @@ transformBtn.addEventListener('click', async () => {
             const base64Data = `data:image/png;base64,${data.image_base64}`;
             processedImg.src = base64Data;
             downloadBtn.href = base64Data;
+            
+            // Store the raw base64 for publishing (without the data:image prefix)
+            currentProcessedImage = data.image_base64;
 
             const timestamp = new Date().getTime();
             downloadBtn.download = `styletrans-${selectedStyle}-${timestamp}.png`;
             downloadBtn.style.display = 'inline-block';
+            
+            // Show publish button
+            if (publishBtn) {
+                publishBtn.style.display = 'inline-block';
+                publishBtn.innerHTML = '<i class="bi bi-share me-2"></i> Publish to Gallery';
+            }
+            
             showAlert('success', 'Image transformed successfully!');
         } else {
             showAlert('error', 'Processing failed');
@@ -215,29 +300,11 @@ transformBtn.addEventListener('click', async () => {
         transformBtn.innerHTML = '<i class="bi bi-magic me-2"></i> Transform Image';
     }
 });
-// ====================== Authentication Modal (UI Only) ======================
-// const loginBtn = document.querySelector('.btn-login');
-// if (loginBtn) {
-//     loginBtn.addEventListener('click', () => {
-//         const authModal = document.getElementById('authModal');
-//         if (authModal) {
-//             const modal = new bootstrap.Modal(authModal);
-//             modal.show();
-//         }
-//     });
-// }
 
-// const loginForm = document.getElementById('loginForm');
-// if (loginForm) loginForm.addEventListener('submit', (e) => {
-//     e.preventDefault();
-//     alert('Login feature will be implemented with backend');
-// });
-
-// const registerForm = document.getElementById('registerForm');
-// if (registerForm) registerForm.addEventListener('submit', (e) => {
-//     e.preventDefault();
-//     alert('Registration feature will be implemented with backend');
-// });
+// Publish button click
+if (publishBtn) {
+    publishBtn.addEventListener('click', handlePublish);
+}
 
 // Reset button
 resetBtn.addEventListener('click', clearFileSelection);
