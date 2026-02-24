@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Dict
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from fastapi import FastAPI, UploadFile, File, Form, Depends, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -260,7 +262,7 @@ async def stylize(
         print(f"Output range for {style}: min={output.min():.3f}, max={output.max():.3f}, mean={output.mean():.3f}")
 
         # Convert tensor to base64 string
-        b64 = tensor_to_base64(output)
+        b64 = tensor_to_base64(output, model_type="unet" if style == "sketch" else "stylization")
         
         # ========== Save to history ONLY for authenticated users ==========
         if current_user:
@@ -459,26 +461,39 @@ async def check_favorite(
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
-# Image helpers
+# Image helpers (FIXED VERSION)
 # =============================
 transform = T.Compose([
     T.Resize((256, 256)),
     T.ToTensor(),
+    T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 ])
 
 def load_image(file: UploadFile):
     img = Image.open(file.file).convert("RGB")
     tensor = transform(img).unsqueeze(0)
+
+    print(f"Input tensor stats - min: {tensor.min():.3f}, max: {tensor.max():.3f}, mean: {tensor.mean():.3f}")
     return tensor
 
-def tensor_to_base64(tensor: torch.Tensor):
+def tensor_to_base64(tensor: torch.Tensor, model_type="unet"):
     """Convert model output tensor to base64 image string"""
     tensor = tensor.squeeze(0)  # Remove batch dimension
     
-    # Normalize to [0, 1] range
-    tensor_min = tensor.min()
-    tensor_max = tensor.max()
-    tensor = (tensor - tensor_min) / (tensor_max - tensor_min + 1e-8)
+    if model_type == "unet":
+        tensor = (tensor + 1) / 2
+
+        gray = 0.299 * tensor[0:1, :, :] + 0.587 * tensor[1:2, :, :] + 0.114 * tensor[2:3, :, :]
+
+        tensor = torch.cat([gray, gray, gray], dim=0)
+    else:
+
+        tensor_min = tensor.min()
+        tensor_max = tensor.max()
+        if tensor_min < 0 or tensor_max > 1:
+            tensor = (tensor - tensor_min) / (tensor_max - tensor_min + 1e-8)
+    
+    tensor = torch.clamp(tensor, 0, 1)
     
     # Convert to PIL Image
     img = T.ToPILImage()(tensor.cpu())
@@ -487,6 +502,84 @@ def tensor_to_base64(tensor: torch.Tensor):
     img.save(buffer, format="PNG")
 
     return base64.b64encode(buffer.getvalue()).decode()
+
+# =============================
+# U-Net Model (Your trained model)
+# =============================
+class UNet(nn.Module):
+    def __init__(self, in_channels=3, out_channels=3):
+        super().__init__()
+        
+        # Encoder
+        self.enc1 = self.conv_block(in_channels, 64, batchnorm=False)
+        self.enc2 = self.conv_block(64, 128)
+        self.enc3 = self.conv_block(128, 256)
+        self.enc4 = self.conv_block(256, 512)
+        self.enc5 = self.conv_block(512, 512)
+        self.enc6 = self.conv_block(512, 512)
+        self.enc7 = self.conv_block(512, 512)
+        self.enc8 = self.conv_block(512, 512, batchnorm=False)
+        
+        # Decoder
+        self.dec8 = self.upconv_block(512, 512, dropout=True)
+        self.dec7 = self.upconv_block(1024, 512, dropout=True)
+        self.dec6 = self.upconv_block(1024, 512, dropout=True)
+        self.dec5 = self.upconv_block(1024, 512)
+        self.dec4 = self.upconv_block(1024, 256)
+        self.dec3 = self.upconv_block(512, 128)
+        self.dec2 = self.upconv_block(256, 64)
+        self.dec1 = nn.Sequential(
+            nn.ConvTranspose2d(128, out_channels, 4, stride=2, padding=1),
+            nn.Tanh()
+        )
+        
+    def conv_block(self, in_channels, out_channels, batchnorm=True):
+        layers = [
+            nn.Conv2d(in_channels, out_channels, 4, stride=2, padding=1),
+            nn.LeakyReLU(0.2, inplace=True)
+        ]
+        if batchnorm:
+            layers.append(nn.BatchNorm2d(out_channels))
+        return nn.Sequential(*layers)
+    
+    def upconv_block(self, in_channels, out_channels, dropout=False):
+        layers = [
+            nn.ConvTranspose2d(in_channels, out_channels, 4, stride=2, padding=1),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(out_channels)
+        ]
+        if dropout:
+            layers.append(nn.Dropout(0.5))
+        return nn.Sequential(*layers)
+    
+    def forward(self, x):
+        # Encoder
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        e5 = self.enc5(e4)
+        e6 = self.enc6(e5)
+        e7 = self.enc7(e6)
+        e8 = self.enc8(e7)
+        
+        # Decoder with skip connections
+        d8 = self.dec8(e8)
+        d8 = torch.cat([d8, e7], dim=1)
+        d7 = self.dec7(d8)
+        d7 = torch.cat([d7, e6], dim=1)
+        d6 = self.dec6(d7)
+        d6 = torch.cat([d6, e5], dim=1)
+        d5 = self.dec5(d6)
+        d5 = torch.cat([d5, e4], dim=1)
+        d4 = self.dec4(d5)
+        d4 = torch.cat([d4, e3], dim=1)
+        d3 = self.dec3(d4)
+        d3 = torch.cat([d3, e2], dim=1)
+        d2 = self.dec2(d3)
+        d2 = torch.cat([d2, e1], dim=1)
+        d1 = self.dec1(d2)
+        return d1
 
 # =============================
 # Style Transfer Network (PyTorch official)
@@ -575,7 +668,7 @@ class TransformerNet(torch.nn.Module):
         return y
 
 # =============================
-# Load models (CPU only) with version compatibility
+# Load models (with U-Net support for sketch)
 # =============================
 STYLE_NAMES = ["sketch", "anime", "ink"]
 models: Dict[str, torch.nn.Module] = {}
@@ -591,37 +684,77 @@ def filter_state_dict(state_dict):
             filtered[key] = value
     return filtered
 
-for name in STYLE_NAMES:
-    # Use TransformerNet instead of SimpleStyleNet
-    model = TransformerNet()
-
-    model_path = f"models/{name}.pt"
-    if os.path.exists(model_path):
-        try:
-            # Load pretrained weights
-            state_dict = torch.load(model_path, map_location="cpu")
-            
-            # Try loading with strict=True first
-            model.load_state_dict(state_dict)
-            print(f"✅ Loaded trained model: {name}")
-            
-        except RuntimeError as e:
-            # If strict loading fails, filter the state_dict and try with strict=False
-            print(f"⚠️ Version mismatch for {name}, filtering state_dict...")
-            try:
-                # Filter out problematic keys
-                filtered_dict = filter_state_dict(state_dict)
-                model.load_state_dict(filtered_dict, strict=False)
-                print(f"✅ Loaded trained model: {name} (with filtered state_dict)")
-                print(f"   Removed {len(state_dict) - len(filtered_dict)} unexpected keys")
-            except Exception as e2:
-                print(f"❌ Failed to load model {name}: {e2}")
-                print(f"Using untrained demo model for: {name}")
+def load_unet_model(model_path):
+    """Load your trained U-Net model"""
+    model = UNet()
+    
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location="cpu")
+    
+    # Handle different checkpoint formats
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        else:
+            state_dict = checkpoint
     else:
+        state_dict = checkpoint
+    
+    # Load weights
+    model.load_state_dict(state_dict)
+    return model
+
+for name in STYLE_NAMES:
+    model_path = f"models/{name}.pt"
+    
+    if not os.path.exists(model_path):
         print(f"⚠️ Model file not found: {model_path}, using random weights")
-        print(f"Using untrained demo model for: {name}")
+        if name == "sketch":
+            model = UNet()  # Use U-Net for sketch even if no weights
+        else:
+            model = TransformerNet()  # Use TransformerNet for others
+    else:
+        try:
+            if name == "sketch":
+                # Try to load as U-Net first (your trained model)
+                try:
+                    model = load_unet_model(model_path)
+                    print(f"✅ Loaded U-Net model: {name}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load as U-Net, trying TransformerNet: {e}")
+                    # If fails, try as TransformerNet
+                    model = TransformerNet()
+                    state_dict = torch.load(model_path, map_location="cpu")
+                    model.load_state_dict(state_dict, strict=False)
+                    print(f"✅ Loaded TransformerNet model: {name} (with filtered state_dict)")
+            else:
+                # Load as TransformerNet for anime and ink
+                model = TransformerNet()
+                state_dict = torch.load(model_path, map_location="cpu")
+                
+                try:
+                    model.load_state_dict(state_dict)
+                    print(f"✅ Loaded trained model: {name}")
+                except RuntimeError as e:
+                    print(f"⚠️ Version mismatch for {name}, filtering state_dict...")
+                    filtered_dict = filter_state_dict(state_dict)
+                    model.load_state_dict(filtered_dict, strict=False)
+                    print(f"✅ Loaded trained model: {name} (with filtered state_dict)")
+                    print(f"   Removed {len(state_dict) - len(filtered_dict)} unexpected keys")
+                    
+        except Exception as e:
+            print(f"❌ Failed to load model {name}: {e}")
+            # Fallback to untrained model
+            if name == "sketch":
+                model = UNet()
+            else:
+                model = TransformerNet()
+            print(f"Using untrained demo model for: {name}")
 
     model.eval()
     models[name] = model
 
-print("All models ready!\n")
+print("\n✅ All models ready!")
+print(f"   sketch model type: {type(models['sketch']).__name__}")
+print(f"   anime model type: {type(models['anime']).__name__}")
+print(f"   ink model type: {type(models['ink']).__name__}")
