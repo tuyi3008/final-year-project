@@ -15,12 +15,11 @@ class PhotoSketchDataset(Dataset):
     """PhotoSketching dataset from Hugging Face"""
     def __init__(self, split='train', img_size=256, transform=None):
         self.img_size = img_size
-        
-        # 加载 Hugging Face 数据集
-        print(f"📂 加载 PhotoSketching {split} 集...")
+
+        print(f"📂 Load PhotoSketching {split} datasets...")
         ds = load_dataset("rhfeiyang/photo-sketch-pair-500")
         self.dataset = ds[split]
-        print(f"✅ 加载{split}集: {len(self.dataset)}对图片")
+        print(f"✅ Load{split} sets: {len(self.dataset)} set pictures")
         
         # Transform
         if transform is None:
@@ -131,27 +130,24 @@ class UNet(nn.Module):
         return d1
 
 
-# ==================== 继续训练函数 ====================
 def continue_training():
     print("=" * 60)
     print("🎨 CONTINUE TRAINING U-NET (FROM BEST MODEL)")
     print("=" * 60)
     
-    # 设置设备
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"⚙️ Using device: {device}")
     if device.type == 'cuda':
         print(f"   GPU: {torch.cuda.get_device_name(0)}")
     
-    # ========== 路径配置 ==========
+
     PRETRAINED_PATH = "/kaggle/input/models/tuyi3008/final-sketch-model/pytorch/default/1/final_sketch_model.pth"
     OUTPUT_DIR = "/kaggle/working/unet_photosketch_continued"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
-    # ========== 训练参数 ==========
     BATCH_SIZE = 8
-    EPOCHS = 50  # 继续训练100轮
-    LEARNING_RATE = 5e-5  # 用小一点的学习率微调
+    EPOCHS = 50
+    LEARNING_RATE = 5e-5 
     IMAGE_SIZE = 256
     
     print(f"\n📊 Training parameters:")
@@ -159,11 +155,9 @@ def continue_training():
     print(f"   Epochs: {EPOCHS}")
     print(f"   Learning Rate: {LEARNING_RATE}")
     
-    # ========== 加载数据 ==========
     print("\n📂 Loading dataset...")
     full_dataset = PhotoSketchDataset(split='train', img_size=IMAGE_SIZE)
-    
-    # 划分训练集和验证集
+
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(
@@ -175,8 +169,7 @@ def continue_training():
     
     print(f"✅ Training set: {len(train_dataset)} pairs")
     print(f"✅ Validation set: {len(val_dataset)} pairs")
-    
-    # ========== 创建模型并加载预训练权重 ==========
+  
     print("\n🤖 Loading pre-trained model...")
     model = UNet().to(device)
     
@@ -188,15 +181,12 @@ def continue_training():
         return
     
     print(f"✅ Model parameters: {sum(p.numel() for p in model.parameters()):,}")
-    
-    # ========== 优化器 ==========
+
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
     l1_loss = nn.L1Loss()
     
-    # ========== 学习率调度器 ==========
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
-    
-    # ========== 训练循环 ==========
+
     print(f"\n🚀 Continuing training for {EPOCHS} epochs...")
     
     train_losses = []
