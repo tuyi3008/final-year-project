@@ -15,12 +15,11 @@ class PhotoSketchDataset(Dataset):
     """PhotoSketching dataset from Hugging Face"""
     def __init__(self, split='train', img_size=256, transform=None):
         self.img_size = img_size
-        
-        # 加载 Hugging Face 数据集
-        print(f"📂 加载 PhotoSketching {split} 集...")
+
+        print(f"📂 Load PhotoSketching {split} datasets...")
         ds = load_dataset("rhfeiyang/photo-sketch-pair-500")
         self.dataset = ds[split]
-        print(f"✅ 加载{split}集: {len(self.dataset)}对图片")
+        print(f"✅ load{split}datasets: {len(self.dataset)} set pictures")
         
         # Transform
         if transform is None:
@@ -45,8 +44,7 @@ class PhotoSketchDataset(Dataset):
     
     def __getitem__(self, idx):
         item = self.dataset[idx]
-        
-        # 获取照片和素描
+
         photo = item['photo'].convert('RGB')
         sketch = item['sketch'].convert('RGB')
         
@@ -150,14 +148,13 @@ def train_unet():
     print(f"⚙️ Using device: {device}")
     if device.type == 'cuda':
         print(f"   GPU: {torch.cuda.get_device_name(0)}")
-    
-    # ========== 输出目录 ==========
+
     OUTPUT_DIR = "/kaggle/working/unet_photosketch"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # Training parameters
     BATCH_SIZE = 8
-    EPOCHS = 30  # 可以先用50轮试试
+    EPOCHS = 30
     LEARNING_RATE = 5e-4
     IMAGE_SIZE = 256
     
@@ -167,11 +164,9 @@ def train_unet():
     print(f"   Learning Rate: {LEARNING_RATE}")
     
     # Load dataset
-        # ========== 修改这里：加载数据集并手动划分 ==========
     print("\n📂 Loading dataset...")
     full_dataset = PhotoSketchDataset(split='train', img_size=IMAGE_SIZE)
-    
-    # 划分训练集和验证集 (80% 训练, 20% 验证)
+
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(
@@ -311,8 +306,5 @@ def train_unet():
 
 
 if __name__ == "__main__":
-    # 先安装 datasets 库
-    !pip install datasets
-    
-    # 开始训练
+
     train_unet()
