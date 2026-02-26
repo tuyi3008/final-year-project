@@ -135,56 +135,60 @@ class AuthManager {
         }
     }
     
-    async handleLogin(e) {
-        e.preventDefault();
-        console.log('Login form submitted');
-        
-        const email = document.getElementById('loginEmail').value;
-        const password = document.getElementById('loginPassword').value;
-        
-        if (!email || !password) {
-            this.showMessage('Please enter email and password', 'error');
-            return;
-        }
-        
-        try {
-            const response = await fetch('/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
-            });
-            
-            const data = await response.json();
-            console.log('Login response:', data);
-            
-            if (response.ok && data.access_token) {
-                // Save token
-                localStorage.setItem('token', data.access_token);
-                localStorage.setItem('token_type', data.token_type);
-                localStorage.setItem('userEmail', email);
-                
-                this.showMessage('Login successful!', 'success');
-                
-                // Close modal after 1 second
-                setTimeout(() => {
-                    const modalElement = document.getElementById('authModal');
-                    if (modalElement) {
-                        const modal = bootstrap.Modal.getInstance(modalElement);
-                        if (modal) modal.hide();
-                    }
-                    this.updateUI();
-                }, 1000);
-                
-            } else {
-                this.showMessage(data.detail || 'Login failed', 'error');
-            }
-        } catch (error) {
-            console.error('Login error:', error);
-            this.showMessage('Network error. Please try again.', 'error');
-        }
+async handleLogin(e) {
+    e.preventDefault();
+    console.log('Login form submitted');
+    
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    
+    if (!email || !password) {
+        this.showMessage('Please enter email and password', 'error');
+        return;
     }
+    
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+        });
+        
+        const data = await response.json();
+        console.log('Login response:', data);
+        
+        if (response.ok && data.access_token) {
+            // Save token
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('token_type', data.token_type);
+            localStorage.setItem('userEmail', email);
+            
+            this.showMessage('Login successful!', 'success');
+            
+            document.dispatchEvent(new CustomEvent('userLoggedIn', { 
+                detail: { email: email } 
+            }));
+            
+            // Close modal after 1 second
+            setTimeout(() => {
+                const modalElement = document.getElementById('authModal');
+                if (modalElement) {
+                    const modal = bootstrap.Modal.getInstance(modalElement);
+                    if (modal) modal.hide();
+                }
+                this.updateUI();
+            }, 1000);
+            
+        } else {
+            this.showMessage(data.detail || 'Login failed', 'error');
+        }
+    } catch (error) {
+        console.error('Login error:', error);
+        this.showMessage('Network error. Please try again.', 'error');
+    }
+}
     
     async handleRegister(e) {
         e.preventDefault();
