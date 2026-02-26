@@ -10,13 +10,21 @@ let currentAlbum = null;
 let selectedPhotos = [];
 let isSelectionMode = false;
 
-// Initialize page
-document.addEventListener('DOMContentLoaded', async () => {
+async function initializePage() {
+    console.log('🔄 Initializing page...');
     const isAuthenticated = await checkAuth();
     if (isAuthenticated) {
         loadAlbums();
         setupEventListeners();
     }
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', initializePage);
+
+document.addEventListener('userLoggedIn', async () => {
+    console.log('🔥 User logged in event received, reloading albums...');
+    await initializePage();
 });
 
 console.log('🔥 photos.js loaded');
