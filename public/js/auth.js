@@ -360,6 +360,9 @@ async handleLogin(e) {
         localStorage.removeItem('token');
         localStorage.removeItem('token_type');
         localStorage.removeItem('userEmail');
+
+        document.dispatchEvent(new CustomEvent('userLoggedOut'));
+        
         this.updateUI();
         this.showMessage('Logged out successfully', 'success');
         

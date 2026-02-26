@@ -16,7 +16,43 @@ async function initializePage() {
     if (isAuthenticated) {
         loadAlbums();
         setupEventListeners();
+    }else {
+        clearUserData();
+        showLoginPrompt();
     }
+}
+
+function clearUserData() {
+    console.log('🧹 Clearing user data');
+    currentUser = null;
+    albums = [];
+    currentAlbum = null;
+    selectedPhotos = [];
+    isSelectionMode = false;
+}
+
+function showLoginPrompt() {
+    console.log('🔐 Showing login prompt');
+    const container = document.getElementById('albums-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="bi bi-person-circle"></i>
+                <h4>Please Log In</h4>
+                <p class="text-muted">You need to be logged in to view your photos</p>
+                <button class="btn btn-gradient" onclick="window.auth?.showLoginModal()">
+                    <i class="bi bi-box-arrow-in-right me-2"></i>
+                    Sign In
+                </button>
+            </div>
+        `;
+    }
+
+    const albumsView = document.getElementById('albums-container')?.parentElement;
+    if (albumsView) albumsView.style.display = 'block';
+    
+    const selectedView = document.getElementById('selected-album-view');
+    if (selectedView) selectedView.style.display = 'none';
 }
 
 // Initialize page
@@ -26,6 +62,18 @@ document.addEventListener('userLoggedIn', async () => {
     console.log('🔥 User logged in event received, reloading albums...');
     await initializePage();
 });
+
+document.addEventListener('userLoggedOut', () => {
+    console.log('👋 User logged out event received');
+    clearUserData();
+    showLoginPrompt();
+    updateUIForLoggedOutUser();
+});
+
+function updateUIForLoggedOutUser() {
+    document.querySelector('.btn-login').style.display = 'inline-block';
+    document.querySelector('.user-menu').style.display = 'none';
+}
 
 console.log('🔥 photos.js loaded');
 console.log('Token exists:', !!localStorage.getItem('token'));
@@ -38,9 +86,9 @@ async function checkAuth() {
     
     if (!token) {
         console.log('❌ No token');
-        if (window.auth?.showLoginModal) {
-            window.auth.showLoginModal();
-        }
+        // if (window.auth?.showLoginModal) {
+        //     window.auth.showLoginModal();
+        // }
         return false;
     }
 
