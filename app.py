@@ -2,19 +2,20 @@ import io
 import base64
 import os
 import uuid
-from datetime import datetime
-from typing import Dict
+from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from fastapi import FastAPI, UploadFile, File, Form, Depends, Request
+from fastapi import FastAPI, UploadFile, File, Form, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import torchvision.transforms as T
 from dotenv import load_dotenv
+from bson import ObjectId
 
 # Import database connection functions
 from database import connect_to_mongo, close_mongo_connection, get_db
@@ -23,7 +24,7 @@ from database import connect_to_mongo, close_mongo_connection, get_db
 from auth import (
     register_user,
     login_for_access_token,
-    get_current_user,
+    get_current_user,  # 这个函数已经是可选的了，返回 Optional[UserInDB]
     UserCreate,
     UserInDB,
     OAuth2PasswordRequestForm
@@ -51,6 +52,8 @@ app.add_middleware(
 # Create uploads directory if not exists
 os.makedirs("uploads/originals", exist_ok=True)
 os.makedirs("uploads/transformed", exist_ok=True)
+os.makedirs("uploads/gallery", exist_ok=True)
+os.makedirs("uploads/challenges", exist_ok=True)
 
 # =============================
 # Database lifecycle management
@@ -116,6 +119,276 @@ async def community():
 @app.get("/profile.html")
 async def profile():
     return FileResponse("public/profile.html")
+
+# =============================
+# Challenge API Routes
+# =============================
+
+@app.get("/api/challenge/current", summary="Get current weekly challenge")
+async def get_current_challenge():
+    """Get the current active weekly challenge"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Find current active challenge (start_date <= now <= end_date)
+        now = datetime.utcnow()
+        challenge = await db.challenges.find_one({
+            "start_date": {"$lte": now},
+            "end_date": {"$gte": now},
+            "active": True
+        })
+        
+        if not challenge:
+            # If no active challenge, create a default one
+            challenge = await create_default_challenge(db)
+        
+        # Calculate days left
+        if challenge and challenge.get('end_date'):
+            days_left = (challenge['end_date'] - now).days
+            challenge['days_left'] = max(0, days_left)
+        
+        # Convert ObjectId to string
+        if challenge and '_id' in challenge:
+            challenge['_id'] = str(challenge['_id'])
+        
+        # Get winners for this challenge (top 3 submissions by likes)
+        winners = await get_challenge_winners(db, challenge['_id'] if challenge else None)
+        if winners:
+            challenge['winners'] = winners
+        
+        return {"code": 200, "challenge": challenge}
+        
+    except Exception as e:
+        print(f"Error loading challenge: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.post("/api/challenge/submit", summary="Submit to weekly challenge")
+async def submit_to_challenge(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Submit an image to the current weekly challenge"""
+    try:
+        data = await request.json()
+        image_path = data.get('image_path')
+        style = data.get('style')
+        description = data.get('description', '')
+        challenge_id = data.get('challenge_id')
+        
+        if not image_path or not style:
+            return JSONResponse({"code": 400, "error": "Missing image_path or style"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get current challenge if no challenge_id provided
+        if not challenge_id:
+            now = datetime.utcnow()
+            current_challenge = await db.challenges.find_one({
+                "start_date": {"$lte": now},
+                "end_date": {"$gte": now},
+                "active": True
+            })
+            if current_challenge:
+                challenge_id = str(current_challenge['_id'])
+            else:
+                return JSONResponse({"code": 400, "error": "No active challenge"}, status_code=400)
+        
+        # Check if user already submitted to this challenge
+        existing = await db.challenge_submissions.find_one({
+            "user_id": current_user.id,
+            "challenge_id": challenge_id
+        })
+        
+        if existing:
+            return JSONResponse({"code": 400, "error": "You have already submitted to this challenge"}, status_code=400)
+        
+        # Create submission record
+        submission = {
+            "user_id": current_user.id,
+            "user_email": current_user.email,
+            "username": current_user.username,
+            "challenge_id": challenge_id,
+            "image_path": image_path,
+            "style": style,
+            "description": description,
+            "likes": 0,
+            "views": 0,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = await db.challenge_submissions.insert_one(submission)
+        
+        # Update challenge submission count
+        await db.challenges.update_one(
+            {"_id": ObjectId(challenge_id)},
+            {"$inc": {"submissions": 1, "participants": 1}}
+        )
+        
+        return {
+            "code": 200,
+            "message": "Successfully submitted to challenge",
+            "submission_id": str(result.inserted_id)
+        }
+        
+    except Exception as e:
+        print(f"Error submitting to challenge: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.get("/api/challenge/submissions", summary="Get challenge submissions")
+async def get_challenge_submissions(
+    challenge_id: Optional[str] = None,
+    page: int = 1,
+    limit: int = 8,
+    style: Optional[str] = None,
+    sort_by: str = "popular"
+):
+    """Get submissions for a challenge with pagination and filtering"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Build query
+        query = {}
+        if challenge_id:
+            query["challenge_id"] = challenge_id
+        if style and style != "all":
+            query["style"] = style
+        
+        # Determine sort order
+        sort_field = "likes" if sort_by == "popular" else "created_at"
+        sort_order = -1  # descending
+        
+        # Get total count
+        total = await db.challenge_submissions.count_documents(query)
+        
+        # Get paginated results
+        skip = (page - 1) * limit
+        cursor = db.challenge_submissions.find(query).sort(sort_field, sort_order).skip(skip).limit(limit)
+        submissions = await cursor.to_list(length=limit)
+        
+        # Convert ObjectId to string
+        for sub in submissions:
+            sub["_id"] = str(sub["_id"])
+        
+        return {
+            "code": 200,
+            "submissions": submissions,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "has_more": total > (page * limit)
+        }
+        
+    except Exception as e:
+        print(f"Error loading submissions: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.post("/api/submission/{submission_id}/like", summary="Like a submission")
+async def like_submission(
+    submission_id: str,
+    current_user: Optional[UserInDB] = Depends(get_current_user)  # 使用 get_current_user，它是可选的
+):
+    """Like or unlike a challenge submission"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Check if submission exists
+        submission = await db.challenge_submissions.find_one({"_id": ObjectId(submission_id)})
+        if not submission:
+            return JSONResponse({"code": 404, "error": "Submission not found"}, status_code=404)
+        
+        # If user is logged in, track unique likes
+        if current_user:
+            # Check if user already liked
+            like = await db.submission_likes.find_one({
+                "submission_id": submission_id,
+                "user_id": current_user.id
+            })
+            
+            if like:
+                # Unlike
+                await db.submission_likes.delete_one({"_id": like["_id"]})
+                await db.challenge_submissions.update_one(
+                    {"_id": ObjectId(submission_id)},
+                    {"$inc": {"likes": -1}}
+                )
+                return {"code": 200, "message": "Unliked", "liked": False}
+            else:
+                # Like
+                await db.submission_likes.insert_one({
+                    "submission_id": submission_id,
+                    "user_id": current_user.id,
+                    "created_at": datetime.utcnow()
+                })
+                await db.challenge_submissions.update_one(
+                    {"_id": ObjectId(submission_id)},
+                    {"$inc": {"likes": 1}}
+                )
+                return {"code": 200, "message": "Liked", "liked": True}
+        else:
+            # Anonymous like - just increment counter
+            await db.challenge_submissions.update_one(
+                {"_id": ObjectId(submission_id)},
+                {"$inc": {"likes": 1}}
+            )
+            return {"code": 200, "message": "Liked", "liked": True}
+        
+    except Exception as e:
+        print(f"Error liking submission: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+# =============================
+# Helper functions for challenges
+# =============================
+
+async def create_default_challenge(db):
+    """Create a default weekly challenge if none exists"""
+    now = datetime.utcnow()
+    end_date = now + timedelta(days=7)
+    
+    default_challenge = {
+        "theme": "Dreamscapes",
+        "description": "Create surreal and dreamlike landscapes. Let your imagination run wild and transform ordinary scenes into extraordinary dreamscapes using our AI styles.",
+        "start_date": now,
+        "end_date": end_date,
+        "active": True,
+        "submissions": 0,
+        "participants": 0,
+        "created_at": now,
+        "updated_at": now
+    }
+    
+    result = await db.challenges.insert_one(default_challenge)
+    default_challenge["_id"] = result.inserted_id
+    return default_challenge
+
+async def get_challenge_winners(db, challenge_id):
+    """Get top 3 submissions for a challenge by likes"""
+    if not challenge_id:
+        return None
+    
+    cursor = db.challenge_submissions.find(
+        {"challenge_id": challenge_id}
+    ).sort("likes", -1).limit(3)
+    
+    winners = await cursor.to_list(length=3)
+    
+    return [{
+        "username": w.get("username", "Anonymous"),
+        "likes": w.get("likes", 0)
+    } for w in winners]
 
 # =============================
 # History routes
@@ -185,12 +458,6 @@ async def publish_to_gallery(
             return JSONResponse({"code": 400, "error": "Missing image or style"}, status_code=400)
         
         # Generate filename
-        import uuid
-        from datetime import datetime
-        import base64
-        from PIL import Image
-        import io
-        
         file_id = str(uuid.uuid4())
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"gallery_{current_user.id}_{timestamp}_{file_id}_{style}.png"
@@ -241,7 +508,7 @@ async def publish_to_gallery(
 async def stylize(
     content: UploadFile = File(...),
     style: str = Form(...),
-    current_user: UserInDB = Depends(get_current_user)  # Optional, None if not logged in
+    current_user: Optional[UserInDB] = Depends(get_current_user)  # 使用 get_current_user，它是可选的
 ):
     try:
         # Validate style
@@ -307,6 +574,9 @@ async def stylize(
                 # Insert into MongoDB history collection
                 await db.history.insert_one(history_record)
                 print(f"✅ History saved for authenticated user: {current_user.email}")
+                
+                # Save last transform to localStorage equivalent (for session)
+                # This will be handled by frontend
                 
             except Exception as e:
                 # Non-critical error - don't fail the request, just log it

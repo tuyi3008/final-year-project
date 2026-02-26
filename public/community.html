@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Community | StyleTrans</title>
+    <title>Community Hub | StyleTrans</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -25,6 +25,10 @@
                     <i class="bi bi-collection"></i>
                     <span>Gallery</span>
                 </a>
+                <a href="photos.html">
+                    <i class="bi bi-images"></i>
+                    <span>My Photos</span>
+                </a>
                 <a href="community.html" class="active">
                     <i class="bi bi-people"></i>
                     <span>Community</span>
@@ -35,8 +39,6 @@
                     <i class="bi bi-person-circle"></i>
                     <span>Sign In</span>
                 </button>
-
-                <!-- User menu (shown when logged in) -->
                 <div class="user-menu" style="display: none;">
                     <a href="profile.html" class="user-icon me-3">
                         <i class="bi bi-person-circle fs-1"></i>
@@ -50,19 +52,227 @@
         </nav>
     </header>
 
-    <div class="container py-5">
-        <div class="community-header">
-            <h1>Community</h1>
-            <p class="text-muted">See what others are creating</p>
+    <!-- Main Container -->
+    <div class="container py-4">
+        <!-- Page Header -->
+        <div class="header text-center mb-5">
+            <div class="logo mb-3">
+                <span class="logo-icon">
+                    <i class="bi bi-trophy-fill"></i>
+                </span>
+                <h1 class="display-5 fw-bold mb-0">Community Hub</h1>
+            </div>
+            <p class="tagline">Discover trending creations and join weekly challenges</p>
         </div>
-        <div class="community-container">
-            <!-- Posts will be loaded by JavaScript -->
+
+        <!-- Weekly Challenge Section -->
+        <section class="mb-5">
+            <div class="d-flex align-items-center mb-4">
+                <h2 class="h3 fw-bold mb-0">
+                    <i class="bi bi-calendar-week-fill text-warning me-2"></i>
+                    Weekly Theme Challenge
+                </h2>
+                <div class="ms-auto">
+                    <span class="badge bg-gradient" id="challenge-dates"></span>
+                </div>
+            </div>
+            
+            <div class="challenge-card" id="weekly-challenge">
+                <!-- Challenge content will be loaded here -->
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- This Week's Trending -->
+        <section class="mb-5">
+            <div class="d-flex align-items-center mb-4">
+                <h2 class="h3 fw-bold mb-0">
+                    <i class="bi bi-fire text-danger me-2"></i>
+                    This Week's Trending
+                </h2>
+                <div class="ms-auto">
+                    <span class="badge bg-gradient">Most liked this week</span>
+                </div>
+            </div>
+            
+            <div class="trending-grid" id="trending-container">
+                <!-- Trending artworks will be loaded here -->
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Challenge Submissions -->
+        <section>
+            <div class="d-flex align-items-center mb-4">
+                <h2 class="h3 fw-bold mb-0">
+                    <i class="bi bi-palette-fill text-info me-2"></i>
+                    Challenge Submissions
+                </h2>
+                <div class="ms-auto">
+                    <button class="btn btn-sm btn-outline-light" id="view-all-submissions">
+                        View All <i class="bi bi-arrow-right ms-1"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter Bar for Challenge Submissions -->
+            <div class="filter-bar glass-card p-3 mb-4">
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <div class="filter-group">
+                        <span class="filter-label me-2">Filter by style:</span>
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="sketch">Sketch</button>
+                        <button class="filter-btn" data-filter="anime">Anime</button>
+                        <button class="filter-btn" data-filter="ink">Ink Wash</button>
+                    </div>
+                    
+                    <div class="filter-group ms-auto">
+                        <span class="filter-label me-2">Sort by:</span>
+                        <select class="sort-select" id="submissions-sort">
+                            <option value="latest">Latest</option>
+                            <option value="popular" selected>Most Liked</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submissions Grid -->
+            <div class="submissions-grid" id="submissions-container">
+                <!-- Submissions will be loaded here -->
+            </div>
+
+            <!-- Load More Button -->
+            <div class="text-center mt-4 mb-5">
+                <button class="btn btn-outline-light px-5" id="load-more-submissions" style="display: none;">
+                    <i class="bi bi-arrow-down-circle me-2"></i>
+                    Load More
+                </button>
+            </div>
+        </section>
+
+        <!-- Join Challenge Button -->
+        <div class="join-challenge-fab">
+            <button class="btn btn-gradient btn-lg rounded-circle" id="join-challenge-btn" data-bs-toggle="modal" data-bs-target="#joinChallengeModal">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+            <span class="join-challenge-tooltip">Join Challenge</span>
         </div>
     </div>
 
+    <!-- Challenge Details Modal -->
+    <div class="modal fade" id="challengeModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content glass-card">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-trophy-fill me-2 text-warning"></i>
+                        Weekly Challenge Details
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="challenge-detail-content">
+                        <!-- Challenge details will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Challenge Modal -->
+    <div class="modal fade" id="joinChallengeModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-card">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-upload me-2 text-primary"></i>
+                        Submit to Challenge
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4" id="no-transformed-image">
+                        <div class="mb-3">
+                            <i class="bi bi-images" style="font-size: 4rem; color: var(--text-muted);"></i>
+                        </div>
+                        <h5>No transformed image found</h5>
+                        <p class="text-muted mb-4">Please transform an image first before submitting to challenge</p>
+                        <a href="/" class="btn btn-gradient">
+                            <i class="bi bi-magic me-2"></i>
+                            Go to Transform
+                        </a>
+                    </div>
+
+                    <div id="join-challenge-form" style="display: none;">
+                        <div class="mb-4 text-center">
+                            <img id="challenge-preview-image" src="" alt="Preview" class="img-fluid rounded" style="max-height: 200px;">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Challenge Theme</label>
+                            <input type="text" class="form-control" id="challenge-theme" readonly>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Style Used</label>
+                            <input type="text" class="form-control" id="challenge-style" readonly>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" id="challenge-description" rows="3" placeholder="Tell us about your creation..."></textarea>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button class="btn btn-gradient" id="submit-challenge-btn">
+                                <i class="bi bi-cloud-upload me-2"></i>
+                                Submit to Challenge
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Submission Detail Modal -->
+    <div class="modal fade" id="submissionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content glass-card">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-chat-quote-fill me-2 text-primary"></i>
+                        Challenge Submission
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="submission-detail-container" id="submission-detail-content">
+                        <!-- Submission detail will be loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="text-center mt-5 pt-5 border-top border-dark">
+        <p class="text-muted">
+            <i class="bi bi-c-circle me-1"></i> 2026 StyleTrans AI • 
+            <span class="text-gradient fw-medium">Powered by Deep Learning</span>
+        </p>
+    </footer>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script src="community.js"></script>
+    <script src="/static/js/community.js"></script>
     <script src="/static/js/auth.js"></script>
     <script src="/static/js/script.js"></script>
 </body>
