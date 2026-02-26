@@ -923,6 +923,80 @@ async def delete_album(
         print(f"Error deleting album: {e}")
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
+@app.post("/api/albums/upload", summary="Upload images to album")
+async def upload_images_to_album(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Upload multiple images to an album"""
+    try:
+        form = await request.form()
+        album_id = form.get('album_id')
+        files = form.getlist('images')
+        
+        if not album_id:
+            return JSONResponse({"code": 400, "error": "Album ID is required"}, status_code=400)
+        
+        if not files:
+            return JSONResponse({"code": 400, "error": "No images uploaded"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Check if album exists and belongs to user
+        album = await db.albums.find_one({"_id": ObjectId(album_id), "user_id": current_user.id})
+        if not album:
+            return JSONResponse({"code": 404, "error": "Album not found"}, status_code=404)
+        
+        uploaded_photos = []
+        
+        for file in files:
+            # Generate unique filename
+            file_id = str(uuid.uuid4())
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"album_photo_{current_user.id}_{timestamp}_{file_id}.jpg"
+            filepath = f"uploads/album_photos/{filename}"
+            
+            # Ensure directory exists
+            os.makedirs("uploads/album_photos", exist_ok=True)
+            
+            # Save file
+            content = await file.read()
+            with open(filepath, "wb") as f:
+                f.write(content)
+            
+            # Create photo record
+            photo = {
+                "album_id": album_id,
+                "user_id": current_user.id,
+                "filename": filename,
+                "image_path": f"/uploads/album_photos/{filename}",
+                "file_size": len(content),
+                "uploaded_at": datetime.utcnow()
+            }
+            
+            result = await db.photos.insert_one(photo)
+            photo["_id"] = str(result.inserted_id)
+            photo["id"] = photo["_id"]
+            uploaded_photos.append(photo)
+        
+        # Update album's updated_at
+        await db.albums.update_one(
+            {"_id": ObjectId(album_id)},
+            {"$set": {"updated_at": datetime.utcnow()}}
+        )
+        
+        return {
+            "code": 200,
+            "message": f"Successfully uploaded {len(uploaded_photos)} images",
+            "photos": uploaded_photos
+        }
+        
+    except Exception as e:
+        print(f"Error uploading images: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
 # =============================
 # Image helpers (FIXED VERSION)
 # =============================

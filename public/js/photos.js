@@ -205,18 +205,27 @@ function createAlbumCard(album) {
     card.className = 'album-card';
     card.dataset.albumId = album.id;
     
-    const coverImage = album.cover_image || getRandomAlbumCover();
     const photoCount = album.photo_count || 0;
     const createdDate = new Date(album.created_at).toLocaleDateString();
+
+    let coverHtml;
+    if (album.cover_image) {
+
+        const imagePath = album.cover_image.startsWith('/') ? album.cover_image : '/' + album.cover_image;
+        coverHtml = `<img src="${imagePath}" alt="${album.name}" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'album-cover-placeholder\'><i class=\'bi bi-images\'></i></div>'">`;
+    } else {
+
+        const gradient = getRandomAlbumCover();
+        coverHtml = `
+            <div class="album-cover-placeholder" style="background: ${gradient}">
+                <i class="bi bi-images"></i>
+            </div>
+        `;
+    }
     
     card.innerHTML = `
         <div class="album-cover">
-            ${coverImage ? 
-                `<img src="${coverImage}" alt="${album.name}">` :
-                `<div class="album-cover-placeholder">
-                    <i class="bi bi-images"></i>
-                </div>`
-            }
+            ${coverHtml}
         </div>
         <div class="album-info">
             <div class="album-header">
@@ -477,6 +486,17 @@ function showAlbumsView() {
 async function createAlbum(e) {
     e.preventDefault();
     
+    const token = localStorage.getItem('token');
+    console.log('📦 Create album token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for create album');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
     const formData = new FormData();
     formData.append('name', document.getElementById('album-name').value);
     formData.append('description', document.getElementById('album-description').value);
@@ -491,17 +511,34 @@ async function createAlbum(e) {
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creating...';
     
     try {
-        const response = await fetch('/api/albums', {
+        const response = await fetch('http://localhost:8000/api/albums', {
             method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            },
             body: formData
         });
+        
+        console.log('📥 Create album response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
         
         const data = await response.json();
         
         if (data.code === 200) {
-            bootstrap.Modal.getInstance(document.getElementById('createAlbumModal')).hide();
+            const modal = bootstrap.Modal.getInstance(document.getElementById('createAlbumModal'));
+            if (modal) modal.hide();
+            
             loadAlbums();
             document.getElementById('create-album-form').reset();
+            showSuccessMessage('Album created successfully!');
         } else {
             alert(data.error || 'Failed to create album');
         }
@@ -518,6 +555,17 @@ async function createAlbum(e) {
 async function uploadImages(e) {
     e.preventDefault();
     
+    const token = localStorage.getItem('token');
+    console.log('📤 Upload images token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for upload');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
     const files = document.getElementById('image-files').files;
     if (files.length === 0) return;
     
@@ -532,10 +580,24 @@ async function uploadImages(e) {
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
     
     try {
-        const response = await fetch('/api/albums/upload', {
+        const response = await fetch('http://localhost:8000/api/albums/upload', {
             method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            },
             body: formData
         });
+        
+        console.log('📥 Upload response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
         
         const data = await response.json();
         
@@ -544,6 +606,7 @@ async function uploadImages(e) {
             openAlbum(currentAlbum.id);
             document.getElementById('upload-images-form').reset();
             document.getElementById('image-preview-container').innerHTML = '';
+            showSuccessMessage('Images uploaded successfully!');
         } else {
             alert(data.error || 'Failed to upload images');
         }
@@ -607,43 +670,101 @@ async function editAlbum(albumId) {
 // Update album
 async function updateAlbum(e) {
     e.preventDefault();
+
+    const token = localStorage.getItem('token');
+    console.log('✏️ Update album token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for update');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
     
     const albumId = document.getElementById('edit-album-id').value;
     
-    const response = await fetch(`/api/albums/${albumId}`, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            name: document.getElementById('edit-album-name').value,
-            description: document.getElementById('edit-album-description').value
-        })
-    });
-    
-    const data = await response.json();
-    
-    if (data.code === 200) {
-        bootstrap.Modal.getInstance(document.getElementById('editAlbumModal')).hide();
-        loadAlbums();
-        if (currentAlbum && currentAlbum.id === albumId) {
-            openAlbum(albumId);
+    try {
+        const response = await fetch(`http://localhost:8000/api/albums/${albumId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: document.getElementById('edit-album-name').value,
+                description: document.getElementById('edit-album-description').value
+            })
+        });
+        
+        console.log('📥 Update album response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
         }
-    } else {
-        alert(data.error || 'Failed to update album');
+        
+        const data = await response.json();
+        
+        if (data.code === 200) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editAlbumModal'));
+            if (modal) modal.hide();
+
+            loadAlbums();
+            
+            if (currentAlbum && currentAlbum.id === albumId) {
+                openAlbum(albumId);
+            }
+
+            showSuccessMessage('Album updated successfully!');
+        } else {
+            alert(data.error || 'Failed to update album');
+        }
+    } catch (error) {
+        console.error('Error updating album:', error);
+        alert('Failed to update album');
     }
 }
 
 // Delete album
 async function deleteAlbum(albumId) {
+    const token = localStorage.getItem('token');
+    console.log('🗑️ Delete album token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for delete');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
     if (!confirm('Are you sure you want to delete this album? All photos will be deleted.')) {
         return;
     }
     
     try {
-        const response = await fetch(`/api/albums/${albumId}`, {
-            method: 'DELETE'
+        const response = await fetch(`http://localhost:8000/api/albums/${albumId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
         });
+        
+        console.log('📥 Delete album response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
         
         const data = await response.json();
         
@@ -651,7 +772,9 @@ async function deleteAlbum(albumId) {
             if (currentAlbum && currentAlbum.id === albumId) {
                 showAlbumsView();
             }
+
             loadAlbums();
+            showSuccessMessage('Album deleted successfully!');
         } else {
             alert(data.error || 'Failed to delete album');
         }
@@ -670,20 +793,46 @@ function deleteCurrentAlbum() {
 
 // Delete photo
 async function deletePhoto(photoId) {
+    const token = localStorage.getItem('token');
+    console.log('🗑️ Delete photo token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for delete photo');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
     if (!confirm('Are you sure you want to delete this photo?')) {
         return;
     }
     
     try {
-        const response = await fetch(`/api/photos/${photoId}`, {
-            method: 'DELETE'
+        const response = await fetch(`http://localhost:8000/api/photos/${photoId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
         });
+        
+        console.log('📥 Delete photo response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
         
         const data = await response.json();
         
         if (data.code === 200) {
             bootstrap.Modal.getInstance(document.getElementById('photoDetailModal')).hide();
             openAlbum(currentAlbum.id);
+            showSuccessMessage('Photo deleted successfully!');
         } else {
             alert(data.error || 'Failed to delete photo');
         }
@@ -705,24 +854,48 @@ function deleteCurrentPhoto() {
 async function deleteSelected() {
     if (selectedPhotos.length === 0) return;
     
+    const token = localStorage.getItem('token');
+    console.log('🗑️ Delete selected photos token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for delete selected');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
     if (!confirm(`Delete ${selectedPhotos.length} selected photos?`)) {
         return;
     }
     
     try {
-        const response = await fetch('/api/photos/batch-delete', {
+        const response = await fetch('http://localhost:8000/api/photos/batch-delete', {
             method: 'POST',
             headers: {
+                'Authorization': 'Bearer ' + token,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ photo_ids: selectedPhotos })
         });
+        
+        console.log('📥 Delete selected response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
         
         const data = await response.json();
         
         if (data.code === 200) {
             exitSelectionMode();
             openAlbum(currentAlbum.id);
+            showSuccessMessage(`${selectedPhotos.length} photos deleted successfully!`);
         } else {
             alert(data.error || 'Failed to delete photos');
         }
@@ -755,15 +928,37 @@ function downloadCurrentPhoto() {
 async function downloadSelected() {
     if (selectedPhotos.length === 0) return;
     
-    // For multiple downloads, create a zip file
+    const token = localStorage.getItem('token');
+    console.log('📥 Download selected token:', token ? 'Present' : 'Missing');
+    
+    if (!token) {
+        console.log('❌ No token for download');
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal();
+        }
+        return;
+    }
+    
     try {
-        const response = await fetch('/api/photos/batch-download', {
+        const response = await fetch('http://localhost:8000/api/photos/batch-download', {
             method: 'POST',
             headers: {
+                'Authorization': 'Bearer ' + token,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ photo_ids: selectedPhotos })
         });
+        
+        console.log('📥 Download selected response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
         
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
@@ -778,6 +973,23 @@ async function downloadSelected() {
         console.error('Error downloading photos:', error);
         alert('Failed to download photos');
     }
+}
+
+// Show success message
+function showSuccessMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+    alertDiv.style.zIndex = '9999';
+    alertDiv.innerHTML = `
+        <i class="bi bi-check-circle-fill me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 3000);
 }
 
 // Show empty state
@@ -804,3 +1016,11 @@ function formatFileSize(bytes) {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
+
+// Make functions global for onclick handlers
+window.editAlbum = editAlbum;
+window.deleteAlbum = deleteAlbum;
+window.downloadSelected = downloadSelected;
+window.deleteSelected = deleteSelected;
+window.exitSelectionMode = exitSelectionMode;
+window.enterSelectionMode = enterSelectionMode;
