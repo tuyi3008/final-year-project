@@ -24,7 +24,8 @@ from database import connect_to_mongo, close_mongo_connection, get_db
 from auth import (
     register_user,
     login_for_access_token,
-    get_current_user,  # 这个函数已经是可选的了，返回 Optional[UserInDB]
+    get_current_user,
+    get_current_user_strict,
     UserCreate,
     UserInDB,
     OAuth2PasswordRequestForm
@@ -87,7 +88,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     return await login_for_access_token(form_data)
 
 @app.get("/profile", summary="Get current user info (login required)")
-async def get_profile(current_user: UserInDB = Depends(get_current_user)):
+async def get_profile(current_user: UserInDB = Depends(get_current_user_strict)):
     return {
         "code": 200,
         "username": current_user.username,
@@ -296,7 +297,7 @@ async def get_challenge_submissions(
 @app.post("/api/submission/{submission_id}/like", summary="Like a submission")
 async def like_submission(
     submission_id: str,
-    current_user: Optional[UserInDB] = Depends(get_current_user)  # 使用 get_current_user，它是可选的
+    current_user: Optional[UserInDB] = Depends(get_current_user)
 ):
     """Like or unlike a challenge submission"""
     try:
@@ -508,7 +509,7 @@ async def publish_to_gallery(
 async def stylize(
     content: UploadFile = File(...),
     style: str = Form(...),
-    current_user: Optional[UserInDB] = Depends(get_current_user)  # 使用 get_current_user，它是可选的
+    current_user: Optional[UserInDB] = Depends(get_current_user)
 ):
     try:
         # Validate style
@@ -728,6 +729,198 @@ async def check_favorite(
         
     except Exception as e:
         print(f"Error checking favorite: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+
+# =============================
+# Album API Routes
+# =============================
+
+@app.get("/api/albums", summary="Get user's albums")
+async def get_albums(current_user: UserInDB = Depends(get_current_user_strict)):
+    """Get all albums for the current user"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get albums from database
+        cursor = db.albums.find({"user_id": current_user.id}).sort("created_at", -1)
+        albums = await cursor.to_list(length=100)
+        
+        # Convert ObjectId to string and add photo count
+        for album in albums:
+            album["_id"] = str(album["_id"])
+            album["id"] = album["_id"]
+            
+            # Count photos in album
+            photo_count = await db.photos.count_documents({"album_id": album["_id"]})
+            album["photo_count"] = photo_count
+        
+        return {"code": 200, "albums": albums}
+        
+    except Exception as e:
+        print(f"Error loading albums: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.get("/api/albums/{album_id}", summary="Get single album")
+async def get_album(
+    album_id: str,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Get a specific album with its photos"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get album
+        album = await db.albums.find_one({"_id": ObjectId(album_id), "user_id": current_user.id})
+        if not album:
+            return JSONResponse({"code": 404, "error": "Album not found"}, status_code=404)
+        
+        album["_id"] = str(album["_id"])
+        album["id"] = album["_id"]
+        
+        # Get photos in this album
+        cursor = db.photos.find({"album_id": album_id}).sort("uploaded_at", -1)
+        photos = await cursor.to_list(length=100)
+        
+        for photo in photos:
+            photo["_id"] = str(photo["_id"])
+            photo["id"] = photo["_id"]
+        
+        album["photos"] = photos
+        album["photo_count"] = len(photos)
+        
+        return {"code": 200, "album": album}
+        
+    except Exception as e:
+        print(f"Error loading album: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.post("/api/albums", summary="Create new album")
+async def create_album(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Create a new album"""
+    try:
+        data = await request.form()
+        name = data.get('name')
+        description = data.get('description', '')
+        
+        if not name:
+            return JSONResponse({"code": 400, "error": "Album name is required"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Handle cover image
+        cover_file = data.get('cover')
+        cover_path = None
+        if cover_file and cover_file.filename:
+            # Save cover image
+            file_id = str(uuid.uuid4())
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"album_cover_{current_user.id}_{timestamp}_{file_id}.jpg"
+            filepath = f"uploads/album_covers/{filename}"
+            
+            os.makedirs("uploads/album_covers", exist_ok=True)
+            
+            content = await cover_file.read()
+            with open(filepath, "wb") as f:
+                f.write(content)
+            
+            cover_path = filepath
+        
+        # Create album record
+        album = {
+            "user_id": current_user.id,
+            "user_email": current_user.email,
+            "username": current_user.username,
+            "name": name,
+            "description": description,
+            "cover_image": cover_path,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }
+        
+        result = await db.albums.insert_one(album)
+        
+        return {
+            "code": 200,
+            "message": "Album created successfully",
+            "album_id": str(result.inserted_id)
+        }
+        
+    except Exception as e:
+        print(f"Error creating album: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.put("/api/albums/{album_id}", summary="Update album")
+async def update_album(
+    album_id: str,
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Update album details"""
+    try:
+        data = await request.json()
+        name = data.get('name')
+        description = data.get('description', '')
+        
+        if not name:
+            return JSONResponse({"code": 400, "error": "Album name is required"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Update album
+        result = await db.albums.update_one(
+            {"_id": ObjectId(album_id), "user_id": current_user.id},
+            {"$set": {
+                "name": name,
+                "description": description,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        if result.modified_count == 0:
+            return JSONResponse({"code": 404, "error": "Album not found"}, status_code=404)
+        
+        return {"code": 200, "message": "Album updated successfully"}
+        
+    except Exception as e:
+        print(f"Error updating album: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.delete("/api/albums/{album_id}", summary="Delete album")
+async def delete_album(
+    album_id: str,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Delete an album and all its photos"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Delete all photos in the album first
+        await db.photos.delete_many({"album_id": album_id})
+        
+        # Delete the album
+        result = await db.albums.delete_one({"_id": ObjectId(album_id), "user_id": current_user.id})
+        
+        if result.deleted_count == 0:
+            return JSONResponse({"code": 404, "error": "Album not found"}, status_code=404)
+        
+        return {"code": 200, "message": "Album deleted successfully"}
+        
+    except Exception as e:
+        print(f"Error deleting album: {e}")
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================

@@ -1,6 +1,5 @@
 // photos.js - My Photos Page Functionality
 
-// photos.js - 文件最开头
 console.log('🚀 photos.js loaded');
 console.log('🔑 Token exists:', !!localStorage.getItem('token'));
 console.log('👤 Auth object exists:', !!window.auth);
@@ -20,15 +19,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// photos.js - 文件最开头添加调试
 console.log('🔥 photos.js loaded');
 console.log('Token exists:', !!localStorage.getItem('token'));
 
-// Check authentication - 完全重写
 async function checkAuth() {
     console.log('🔍 checkAuth started');
-    
-    // 1. 获取 token
+
     const token = localStorage.getItem('token');
     console.log('📦 Token from localStorage:', token ? `Found (${token.substring(0,15)}...)` : 'Not found');
     
@@ -40,7 +36,6 @@ async function checkAuth() {
         return false;
     }
 
-    // 2. 手动构建请求，确保 headers 被发送
     try {
         console.log('📤 Sending request to /profile with header:', 'Bearer ' + token.substring(0,15) + '...');
         
@@ -54,8 +49,7 @@ async function checkAuth() {
         });
         
         console.log('📥 Response status:', response.status);
-        
-        // 打印实际发送的 headers（调试用）
+
         console.log('Request headers sent:', {
             'Authorization': 'Bearer ' + token.substring(0,10) + '...',
             'Content-Type': 'application/json'
@@ -95,61 +89,6 @@ async function checkAuth() {
     }
 }
 
-
-// 临时模拟数据
-const mockAlbums = [
-    {
-        id: '1',
-        name: 'My First Album',
-        description: 'My anime style creations',
-        photo_count: 5,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        cover_image: null
-    },
-    {
-        id: '2',
-        name: 'Sketch Collection',
-        description: 'Beautiful sketch transformations',
-        photo_count: 3,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        cover_image: null
-    }
-];
-
-// 修改 loadAlbums 函数
-async function loadAlbums() {
-    try {
-        // TODO: 等后端实现后取消注释
-        /*
-        const token = localStorage.getItem('token');
-        const response = await fetch('http://localhost:8000/api/albums', {
-            headers: {
-                'Authorization': 'Bearer ' + token
-            }
-        });
-        const data = await response.json();
-        
-        if (data.code === 200) {
-            albums = data.albums;
-        } else {
-            albums = mockAlbums; // 使用模拟数据
-        }
-        */
-        
-        // 暂时使用模拟数据
-        albums = mockAlbums;
-        renderAlbums();
-        
-    } catch (error) {
-        console.error('Error loading albums:', error);
-        albums = mockAlbums;
-        renderAlbums();
-    }
-}
-
-
 // Update UI for logged in user
 function updateUIForLoggedInUser() {
     document.querySelector('.btn-login').style.display = 'none';
@@ -186,20 +125,52 @@ function setupEventListeners() {
 }
 
 // Load albums from backend
-// async function loadAlbums() {
-//     try {
-//         const response = await fetch('/api/albums');
-//         const data = await response.json();
+async function loadAlbums() {
+    console.log('📚 Loading albums from backend...');
+    
+    try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            console.log('❌ No token for albums request');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
+
+        const response = await fetch('http://localhost:8000/api/albums', {
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            }
+        });
         
-//         if (data.code === 200) {
-//             albums = data.albums;
-//             renderAlbums();
-//         }
-//     } catch (error) {
-//         console.error('Error loading albums:', error);
-//         showEmptyState();
-//     }
-// }
+        console.log('📥 Albums response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
+        
+        const data = await response.json();
+        console.log('📦 Albums data:', data);
+        
+        if (data.code === 200) {
+            albums = data.albums;
+            renderAlbums();
+        } else {
+            console.error('Failed to load albums:', data.error);
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error loading albums:', error);
+        showEmptyState();
+    }
+}
 
 // Render albums grid
 function renderAlbums() {
@@ -289,13 +260,40 @@ function getRandomAlbumCover() {
 
 // Open album
 async function openAlbum(albumId) {
+    console.log('📂 Opening album:', albumId);
+    
     try {
-        const response = await fetch(`/api/albums/${albumId}`);
+        const token = localStorage.getItem('token');
+        if (!token) {
+            console.log('❌ No token');
+            return;
+        }
+
+        const response = await fetch(`http://localhost:8000/api/albums/${albumId}`, {
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        console.log('📥 Album response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
+        
         const data = await response.json();
         
         if (data.code === 200) {
             currentAlbum = data.album;
             renderAlbumView();
+        } else {
+            console.error('Failed to load album:', data.error);
         }
     } catch (error) {
         console.error('Error opening album:', error);
