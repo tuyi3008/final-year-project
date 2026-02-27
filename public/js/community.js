@@ -105,7 +105,6 @@ async function loadTrendingArtworks() {
         const data = await response.json();
         
         if (data.code === 200 && data.images) {
-            // Sort by likes (descending) and take top 4
             const trending = data.images
                 .sort((a, b) => (b.likes || 0) - (a.likes || 0))
                 .slice(0, 4);
@@ -177,35 +176,43 @@ async function loadSubmissions(reset = false) {
     if (!hasMore) return;
     
     isLoading = true;
-    document.getElementById('loading-more').style.display = 'block';
+    const loadingMore = document.getElementById('loading-more');
+    if (loadingMore) loadingMore.style.display = 'block';
     
     try {
-        const response = await fetch('/gallery/images');
-        const data = await response.json();
+        const url = `/api/challenge/submissions?page=${page}&limit=${itemsPerPage}&style=${currentFilter}&sort=${currentSort}`;
+        console.log('📡 Fetching:', url);
         
-        if (data.code === 200 && data.images) {
-            // Filter by current filter
-            let filtered = data.images;
-            if (currentFilter !== 'all') {
-                filtered = filtered.filter(img => img.style === currentFilter);
+        const response = await fetch(url);
+        const data = await response.json();
+
+        console.log('📦 API response:', data);
+        
+        if (data.code === 200) {
+            const validSubmissions = (data.submissions || []).filter(item => item != null);
+            console.log('✅ Valid submissions:', validSubmissions.length);
+            
+            if (reset) {
+                submissionsData = validSubmissions;
+            } else {
+                submissionsData = [...submissionsData, ...validSubmissions];
             }
             
-            // Sort
-            filtered = sortSubmissions(filtered, currentSort);
-            
-            submissionsData = filtered;
             renderSubmissions();
-            
-            // Check if there are more items
-            hasMore = filtered.length > page * itemsPerPage;
+            hasMore = data.has_more || false;
+        } else {
+            console.error('❌ API error:', data.error);
         }
     } catch (error) {
-        console.error('Error loading submissions:', error);
+        console.error('❌ Fetch error:', error);
     } finally {
         isLoading = false;
-        document.getElementById('loading-more').style.display = 'none';
-        document.getElementById('load-more-submissions').style.display = 
-            hasMore ? 'block' : 'none';
+        if (loadingMore) loadingMore.style.display = 'none';
+        
+        const loadMoreBtn = document.getElementById('load-more-submissions');
+        if (loadMoreBtn) {
+            loadMoreBtn.style.display = hasMore ? 'block' : 'none';
+        }
     }
 }
 
@@ -228,39 +235,51 @@ function renderSubmissions() {
     
     if (!container) return;
     
-    if (submissionsData.length === 0) {
+    if (!submissionsData || submissionsData.length === 0) {
         container.innerHTML = `
-            <div class="col-12">
-                <div class="empty-state">
-                    <i class="bi bi-images"></i>
-                    <h4>No submissions yet</h4>
-                    <p class="text-muted">Be the first to join the challenge!</p>
-                    <button class="btn btn-gradient" onclick="showJoinChallengeModal()">
-                        <i class="bi bi-upload me-2"></i>
-                        Join Challenge
-                    </button>
-                </div>
+            <div class="empty-state">
+                <i class="bi bi-images"></i>
+                <h4>No submissions yet</h4>
+                <p class="text-muted">Be the first to join the challenge!</p>
+                <button class="btn btn-gradient" onclick="showJoinChallengeModal()">
+                    <i class="bi bi-upload me-2"></i>
+                    Join Challenge
+                </button>
             </div>
         `;
         return;
     }
     
-    const start = (page - 1) * itemsPerPage;
-    const end = start + itemsPerPage;
-    const pageItems = submissionsData.slice(0, end);
-    
     container.innerHTML = '';
     
-    pageItems.forEach(item => {
+    submissionsData.forEach(item => {
         const submissionEl = document.createElement('div');
         submissionEl.className = 'submission-item';
-        submissionEl.onclick = () => viewSubmission(item);
         
         const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Recent';
+        const style = item.style || 'Unknown';
+        const username = item.username || 'Anonymous';
+        const likes = item.likes || 0;
+        let imagePath = item.image_path || '';
+
+        if (imagePath && !imagePath.startsWith('http')) {
+
+            if (!imagePath.startsWith('/')) {
+                imagePath = '/' + imagePath;
+            }
+
+            if (!imagePath.includes('/uploads/')) {
+                imagePath = '/uploads/album_photos/' + imagePath.split('/').pop();
+            }
+        }
+
+        const imgSrc = imagePath ? `http://localhost:8000${imagePath}` : 'https://via.placeholder.com/300?text=No+Image';
         
         submissionEl.innerHTML = `
             <div class="submission-image">
-                <img src="/${item.image_path}" alt="${item.style} style">
+                <img src="${imgSrc}" alt="${style}" 
+                     onerror="this.src='https://via.placeholder.com/300?text=No+Image'"
+                     style="width:100%; height:100%; object-fit:cover;">
                 ${weeklyChallenge ? `
                     <div class="challenge-badge">
                         <i class="bi bi-trophy-fill"></i>
@@ -271,13 +290,13 @@ function renderSubmissions() {
             <div class="submission-info">
                 <div class="submission-user">
                     <i class="bi bi-person-circle"></i>
-                    <span>${item.username || 'Anonymous'}</span>
+                    <span>${username}</span>
                 </div>
                 <div class="submission-stats">
                     <span class="submission-likes">
-                        <i class="bi bi-heart-fill"></i> ${item.likes || 0}
+                        <i class="bi bi-heart-fill"></i> ${likes}
                     </span>
-                    <span class="submission-style">${item.style}</span>
+                    <span class="submission-style">${style}</span>
                 </div>
                 <div class="small text-muted mt-2">
                     <i class="bi bi-calendar3 me-1"></i>${date}
@@ -285,20 +304,46 @@ function renderSubmissions() {
             </div>
         `;
         
+        submissionEl.addEventListener('click', function() {
+            viewSubmission(item);
+        });
+        
         container.appendChild(submissionEl);
     });
 }
 
 // View submission details
 function viewSubmission(item) {
+    console.log('Viewing submission:', item);
+    
     const modalContent = document.getElementById('submission-detail-content');
+    const modalElement = document.getElementById('submissionModal');
+    
+    if (!modalContent || !modalElement) {
+        console.error('Modal elements not found');
+        return;
+    }
     
     const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Recent';
+    
+    let imagePath = item.image_path || '';
+    if (imagePath && !imagePath.startsWith('http')) {
+        if (!imagePath.startsWith('/')) {
+            imagePath = '/' + imagePath;
+        }
+        if (!imagePath.includes('/uploads/')) {
+            imagePath = '/uploads/album_photos/' + imagePath.split('/').pop();
+        }
+        imagePath = `http://localhost:8000${imagePath}`;
+    }
     
     modalContent.innerHTML = `
         <div class="row g-0">
             <div class="col-md-7">
-                <img src="/${item.image_path}" class="img-fluid w-100" alt="${item.style}" style="max-height: 500px; object-fit: cover;">
+                <img src="${imagePath || 'https://via.placeholder.com/500?text=No+Image'}" 
+                     class="img-fluid w-100" alt="${item.style}" 
+                     style="max-height: 500px; object-fit: cover;"
+                     onerror="this.src='https://via.placeholder.com/500?text=No+Image'">
             </div>
             <div class="col-md-5 p-4">
                 <div class="d-flex align-items-center mb-3">
@@ -332,10 +377,10 @@ function viewSubmission(item) {
                 </div>
                 
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-light flex-grow-1" onclick="likeSubmission(${item.id})">
+                    <button class="btn btn-outline-light flex-grow-1" onclick="likeSubmission('${item._id}')">
                         <i class="bi bi-heart"></i> Like
                     </button>
-                    <button class="btn btn-outline-light flex-grow-1" onclick="shareSubmission(${item.id})">
+                    <button class="btn btn-outline-light flex-grow-1" onclick="shareSubmission('${item._id}')">
                         <i class="bi bi-share"></i> Share
                     </button>
                 </div>
@@ -343,8 +388,12 @@ function viewSubmission(item) {
         </div>
     `;
     
-    const modal = new bootstrap.Modal(document.getElementById('submissionModal'));
-    modal.show();
+    try {
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    } catch (error) {
+        console.error('Error showing modal:', error);
+    }
 }
 
 // View challenge details
@@ -386,81 +435,136 @@ function viewChallengeDetails() {
     modal.show();
 }
 
-// Show join challenge modal
-function showJoinChallengeModal() {
-    const lastTransform = localStorage.getItem('lastTransform');
+// Show upload option
+function showUploadOption() {
+    document.getElementById('source-options').style.display = 'none';
+    document.getElementById('no-transformed-image').style.display = 'none';
+    document.getElementById('upload-content').style.display = 'block';
     
-    if (lastTransform) {
-        const transform = JSON.parse(lastTransform);
-        document.getElementById('no-transformed-image').style.display = 'none';
-        document.getElementById('join-challenge-form').style.display = 'block';
-        document.getElementById('challenge-preview-image').src = transform.image_path;
-        document.getElementById('challenge-theme').value = weeklyChallenge?.theme || '';
-        document.getElementById('challenge-style').value = transform.style;
-    } else {
-        document.getElementById('no-transformed-image').style.display = 'block';
-        document.getElementById('join-challenge-form').style.display = 'none';
-    }
-    
-    const modal = new bootstrap.Modal(document.getElementById('joinChallengeModal'));
-    modal.show();
+    document.getElementById('challenge-file-input').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('upload-preview').style.display = 'block';
+                document.getElementById('upload-preview img').src = e.target.result;
+                document.getElementById('upload-form').style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
 }
 
-// Submit to challenge
-async function submitToChallenge() {
-    const description = document.getElementById('challenge-description').value;
+// Select from album
+function selectFromAlbum() {
+    if (weeklyChallenge) {
+        sessionStorage.setItem('pendingChallenge', JSON.stringify(weeklyChallenge));
+    }
+    window.location.href = '/static/photos.html?select=challenge';
+}
+
+// Reset join modal
+function resetJoinModal() {
+    document.getElementById('source-options').style.display = 'flex';
+    document.getElementById('no-transformed-image').style.display = 'block';
+    document.getElementById('upload-content').style.display = 'none';
+    document.getElementById('upload-preview').style.display = 'none';
+    document.getElementById('upload-form').style.display = 'none';
+    document.getElementById('challenge-file-input').value = '';
+}
+
+// Process and submit uploaded file
+async function processAndSubmit() {
+    const file = document.getElementById('challenge-file-input').files[0];
+    const style = document.getElementById('upload-style').value;
+    const description = document.getElementById('upload-description').value;
+    const token = localStorage.getItem('token');
+    
+    if (!file) {
+        alert('Please select a file');
+        return;
+    }
     
     if (!description.trim()) {
-        alert('Please add a description for your submission');
+        alert('Please add a description');
         return;
     }
     
-    const lastTransform = localStorage.getItem('lastTransform');
-    
-    if (!lastTransform) {
-        alert('No transformed image found');
-        return;
-    }
-    
-    const submitBtn = document.getElementById('submit-challenge-btn');
+    const submitBtn = document.querySelector('#upload-form .btn-gradient');
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing...';
     
     try {
-        // API call to submit to challenge
-        const response = await fetch('/api/challenge/submit', {
+        const formData = new FormData();
+        formData.append('content', file);
+        formData.append('style', style);
+        
+        const transformResponse = await fetch('http://localhost:8000/stylize/', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            },
+            body: formData
+        });
+        
+        const transformData = await transformResponse.json();
+        
+        if (!transformResponse.ok) {
+            throw new Error(transformData.error || 'Transformation failed');
+        }
+        
+        const submitResponse = await fetch('/api/challenge/submit', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
             },
             body: JSON.stringify({
-                image_path: JSON.parse(lastTransform).image_path,
-                style: JSON.parse(lastTransform).style,
+                image_path: transformData.image_path,
+                style: style,
                 description: description,
                 challenge_id: weeklyChallenge?.id
             })
         });
         
-        const data = await response.json();
+        const submitData = await submitResponse.json();
         
-        if (data.code === 200) {
-            alert('✅ Successfully submitted to challenge!');
+        if (submitData.code === 200) {
+            alert('Successfully submitted to challenge!');
             
-            bootstrap.Modal.getInstance(document.getElementById('joinChallengeModal')).hide();
-            document.getElementById('challenge-description').value = '';
+            const modal = bootstrap.Modal.getInstance(document.getElementById('joinChallengeModal'));
+            modal.hide();
             
-            // Refresh submissions
+            resetJoinModal();
             loadSubmissions(true);
         } else {
-            alert(data.message || 'Failed to submit');
+            alert(submitData.error || 'Failed to submit');
         }
+        
     } catch (error) {
-        console.error('Error submitting:', error);
-        alert('Failed to submit. Please try again.');
+        console.error('Error:', error);
+        alert('Failed to process image. Please try again.');
     } finally {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Submit to Challenge';
+        submitBtn.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Process & Submit';
     }
+}
+
+// Show join challenge modal
+async function showJoinChallengeModal() {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal('Please login to join the challenge');
+        }
+        return;
+    }
+    
+    resetJoinModal();
+    
+    const modal = new bootstrap.Modal(document.getElementById('joinChallengeModal'));
+    modal.show();
 }
 
 // Filter submissions
@@ -486,18 +590,30 @@ function sortSubmissionsList() {
 
 // Like submission
 async function likeSubmission(id) {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal('Please login to like submissions');
+        }
+        return;
+    }
+    
     try {
         const response = await fetch(`/api/submission/${id}/like`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
         });
         
         const data = await response.json();
         
         if (data.code === 200) {
-            // Update UI
             const likeBtn = event?.target?.closest('button');
             if (likeBtn) {
                 likeBtn.innerHTML = '<i class="bi bi-heart-fill text-danger"></i> Liked';
+                likeBtn.disabled = true;
             }
         }
     } catch (error) {
@@ -509,6 +625,8 @@ async function likeSubmission(id) {
 function shareSubmission(id) {
     const link = `${window.location.origin}/submission/${id}`;
     navigator.clipboard?.writeText(link).then(() => {
+        alert('Link copied to clipboard!');
+    }).catch(() => {
         alert('Link copied to clipboard!');
     });
 }
@@ -556,15 +674,19 @@ document.addEventListener('DOMContentLoaded', () => {
         viewAllBtn.addEventListener('click', viewAllSubmissions);
     }
     
-    const submitBtn = document.getElementById('submit-challenge-btn');
-    if (submitBtn) {
-        submitBtn.addEventListener('click', submitToChallenge);
-    }
-    
     const joinModal = document.getElementById('joinChallengeModal');
     if (joinModal) {
         joinModal.addEventListener('hidden.bs.modal', () => {
-            document.getElementById('challenge-description').value = '';
+            resetJoinModal();
         });
     }
 });
+
+// Make functions global for onclick handlers
+window.showJoinChallengeModal = showJoinChallengeModal;
+window.viewChallengeDetails = viewChallengeDetails;
+window.showUploadOption = showUploadOption;
+window.selectFromAlbum = selectFromAlbum;
+window.processAndSubmit = processAndSubmit;
+window.likeSubmission = likeSubmission;
+window.shareSubmission = shareSubmission;

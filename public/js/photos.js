@@ -16,7 +16,8 @@ async function initializePage() {
     if (isAuthenticated) {
         loadAlbums();
         setupEventListeners();
-    }else {
+        checkForChallengeSelection();
+    } else {
         clearUserData();
         showLoginPrompt();
     }
@@ -55,7 +56,6 @@ function showLoginPrompt() {
     if (selectedView) selectedView.style.display = 'none';
 }
 
-// Initialize page
 document.addEventListener('DOMContentLoaded', initializePage);
 
 document.addEventListener('userLoggedIn', async () => {
@@ -75,9 +75,6 @@ function updateUIForLoggedOutUser() {
     document.querySelector('.user-menu').style.display = 'none';
 }
 
-console.log('🔥 photos.js loaded');
-console.log('Token exists:', !!localStorage.getItem('token'));
-
 async function checkAuth() {
     console.log('🔍 checkAuth started');
 
@@ -86,9 +83,6 @@ async function checkAuth() {
     
     if (!token) {
         console.log('❌ No token');
-        // if (window.auth?.showLoginModal) {
-        //     window.auth.showLoginModal();
-        // }
         return false;
     }
 
@@ -105,11 +99,6 @@ async function checkAuth() {
         });
         
         console.log('📥 Response status:', response.status);
-
-        console.log('Request headers sent:', {
-            'Authorization': 'Bearer ' + token.substring(0,10) + '...',
-            'Content-Type': 'application/json'
-        });
         
         if (response.status === 401) {
             console.log('⚠️ Token invalid');
@@ -145,42 +134,37 @@ async function checkAuth() {
     }
 }
 
-// Update UI for logged in user
 function updateUIForLoggedInUser() {
     document.querySelector('.btn-login').style.display = 'none';
     document.querySelector('.user-menu').style.display = 'flex';
 }
 
-// Setup event listeners
 function setupEventListeners() {
-    // Create album form
-    document.getElementById('create-album-form').addEventListener('submit', createAlbum);
+    const createAlbumForm = document.getElementById('create-album-form');
+    if (createAlbumForm) createAlbumForm.addEventListener('submit', createAlbum);
     
-    // Upload images form
-    document.getElementById('upload-images-form').addEventListener('submit', uploadImages);
+    const uploadImagesForm = document.getElementById('upload-images-form');
+    if (uploadImagesForm) uploadImagesForm.addEventListener('submit', uploadImages);
     
-    // Image files preview
-    document.getElementById('image-files').addEventListener('change', previewImages);
+    const imageFiles = document.getElementById('image-files');
+    if (imageFiles) imageFiles.addEventListener('change', previewImages);
     
-    // Back to albums
-    document.getElementById('back-to-albums').addEventListener('click', () => {
-        showAlbumsView();
-    });
+    const backToAlbums = document.getElementById('back-to-albums');
+    if (backToAlbums) backToAlbums.addEventListener('click', showAlbumsView);
     
-    // Delete album
-    document.getElementById('delete-album-btn').addEventListener('click', deleteCurrentAlbum);
+    const deleteAlbumBtn = document.getElementById('delete-album-btn');
+    if (deleteAlbumBtn) deleteAlbumBtn.addEventListener('click', deleteCurrentAlbum);
     
-    // Edit album form
-    document.getElementById('edit-album-form').addEventListener('submit', updateAlbum);
+    const editAlbumForm = document.getElementById('edit-album-form');
+    if (editAlbumForm) editAlbumForm.addEventListener('submit', updateAlbum);
     
-    // Download photo
-    document.getElementById('download-photo-btn').addEventListener('click', downloadCurrentPhoto);
+    const downloadPhotoBtn = document.getElementById('download-photo-btn');
+    if (downloadPhotoBtn) downloadPhotoBtn.addEventListener('click', downloadCurrentPhoto);
     
-    // Delete photo
-    document.getElementById('delete-photo-btn').addEventListener('click', deleteCurrentPhoto);
+    const deletePhotoBtn = document.getElementById('delete-photo-btn');
+    if (deletePhotoBtn) deletePhotoBtn.addEventListener('click', deleteCurrentPhoto);
 }
 
-// Load albums from backend
 async function loadAlbums() {
     console.log('📚 Loading albums from backend...');
     
@@ -228,7 +212,6 @@ async function loadAlbums() {
     }
 }
 
-// Render albums grid
 function renderAlbums() {
     const container = document.getElementById('albums-container');
     
@@ -255,7 +238,6 @@ function renderAlbums() {
     });
 }
 
-// Create album card element
 function createAlbumCard(album) {
     const card = document.createElement('div');
     card.className = 'album-card';
@@ -266,11 +248,9 @@ function createAlbumCard(album) {
 
     let coverHtml;
     if (album.cover_image) {
-
         const imagePath = album.cover_image.startsWith('/') ? album.cover_image : '/' + album.cover_image;
         coverHtml = `<img src="${imagePath}" alt="${album.name}" onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\'album-cover-placeholder\'><i class=\'bi bi-images\'></i></div>'">`;
     } else {
-
         const gradient = getRandomAlbumCover();
         coverHtml = `
             <div class="album-cover-placeholder" style="background: ${gradient}">
@@ -312,7 +292,6 @@ function createAlbumCard(album) {
     return card;
 }
 
-// Get random album cover gradient
 function getRandomAlbumCover() {
     const gradients = [
         'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -323,7 +302,6 @@ function getRandomAlbumCover() {
     return gradients[Math.floor(Math.random() * gradients.length)];
 }
 
-// Open album
 async function openAlbum(albumId) {
     console.log('📂 Opening album:', albumId);
     
@@ -357,6 +335,7 @@ async function openAlbum(albumId) {
         if (data.code === 200) {
             currentAlbum = data.album;
             renderAlbumView();
+            checkForChallengeSelection();
         } else {
             console.error('Failed to load album:', data.error);
         }
@@ -365,7 +344,6 @@ async function openAlbum(albumId) {
     }
 }
 
-// Render album view
 function renderAlbumView() {
     document.getElementById('albums-container').parentElement.style.display = 'none';
     document.getElementById('selected-album-view').style.display = 'block';
@@ -378,7 +356,6 @@ function renderAlbumView() {
     renderPhotos(currentAlbum.photos || []);
 }
 
-// Render photos grid
 function renderPhotos(photos) {
     const container = document.getElementById('photos-container');
     
@@ -405,14 +382,12 @@ function renderPhotos(photos) {
     });
 }
 
-// Create photo card element
 function createPhotoCard(photo) {
     const card = document.createElement('div');
     card.className = 'photo-card';
     card.dataset.photoId = photo.id;
     
     const uploadDate = new Date(photo.uploaded_at).toLocaleDateString();
-    const fileSize = formatFileSize(photo.file_size);
     
     card.innerHTML = `
         ${isSelectionMode ? 
@@ -438,15 +413,17 @@ function createPhotoCard(photo) {
     });
     
     if (isSelectionMode) {
-        card.querySelector('.photo-checkbox').addEventListener('change', (e) => {
-            togglePhotoSelection(photo.id, e.target.checked);
-        });
+        const checkbox = card.querySelector('.photo-checkbox');
+        if (checkbox) {
+            checkbox.addEventListener('change', (e) => {
+                togglePhotoSelection(photo.id, e.target.checked);
+            });
+        }
     }
     
     return card;
 }
 
-// Open photo detail
 function openPhotoDetail(photo) {
     document.getElementById('detail-photo-image').src = photo.image_path;
     document.getElementById('detail-photo-filename').textContent = photo.filename;
@@ -454,7 +431,6 @@ function openPhotoDetail(photo) {
     document.getElementById('detail-photo-size').textContent = formatFileSize(photo.file_size);
     document.getElementById('detail-photo-style').textContent = photo.style || 'Original';
     
-    // Store current photo ID for delete/download
     document.getElementById('detail-photo-image').dataset.photoId = photo.id;
     document.getElementById('detail-photo-image').dataset.photoPath = photo.image_path;
     
@@ -462,7 +438,6 @@ function openPhotoDetail(photo) {
     modal.show();
 }
 
-// Toggle photo selection
 function togglePhotoSelection(photoId, selected) {
     if (selected === undefined) {
         const index = selectedPhotos.indexOf(photoId);
@@ -473,17 +448,17 @@ function togglePhotoSelection(photoId, selected) {
         }
     } else {
         if (selected) {
-            selectedPhotos.push(photoId);
+            if (!selectedPhotos.includes(photoId)) {
+                selectedPhotos.push(photoId);
+            }
         } else {
             selectedPhotos = selectedPhotos.filter(id => id !== photoId);
         }
     }
     
-    // Update selection bar
     updateSelectionBar();
 }
 
-// Update selection bar
 function updateSelectionBar() {
     let bar = document.querySelector('.selection-bar');
     
@@ -494,43 +469,60 @@ function updateSelectionBar() {
             document.getElementById('selected-album-view').insertBefore(bar, document.getElementById('photos-container'));
         }
         
-        bar.innerHTML = `
-            <span><strong>${selectedPhotos.length}</strong> photos selected</span>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-light btn-sm" onclick="downloadSelected()">
-                    <i class="bi bi-download"></i> Download
-                </button>
-                <button class="btn btn-outline-danger btn-sm" onclick="deleteSelected()">
-                    <i class="bi bi-trash"></i> Delete
-                </button>
-                <button class="btn btn-outline-light btn-sm" onclick="exitSelectionMode()">
-                    <i class="bi bi-x-lg"></i> Cancel
-                </button>
-            </div>
-        `;
+        const isChallengeMode = window.location.search.includes('select=challenge');
+        
+        if (isChallengeMode) {
+            bar.innerHTML = `
+                <span><strong>${selectedPhotos.length}</strong> photos selected for challenge</span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-warning btn-sm" onclick="submitSelectedToChallenge()">
+                        <i class="bi bi-trophy me-2"></i>Submit to Challenge
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" onclick="exitSelectionMode()">
+                        <i class="bi bi-x-lg"></i>Cancel
+                    </button>
+                </div>
+            `;
+        } else {
+            bar.innerHTML = `
+                <span><strong>${selectedPhotos.length}</strong> photos selected</span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-light btn-sm" onclick="downloadSelected()">
+                        <i class="bi bi-download"></i> Download
+                    </button>
+                    <button class="btn btn-outline-danger btn-sm" onclick="deleteSelected()">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" onclick="exitSelectionMode()">
+                        <i class="bi bi-x-lg"></i> Cancel
+                    </button>
+                </div>
+            `;
+        }
     } else if (bar) {
         bar.remove();
         exitSelectionMode();
     }
 }
 
-// Enter selection mode
 function enterSelectionMode() {
     isSelectionMode = true;
-    renderPhotos(currentAlbum.photos || []);
+    if (currentAlbum && currentAlbum.photos) {
+        renderPhotos(currentAlbum.photos);
+    }
 }
 
-// Exit selection mode
 function exitSelectionMode() {
     isSelectionMode = false;
     selectedPhotos = [];
-    renderPhotos(currentAlbum.photos || []);
+    if (currentAlbum && currentAlbum.photos) {
+        renderPhotos(currentAlbum.photos);
+    }
     
     const bar = document.querySelector('.selection-bar');
     if (bar) bar.remove();
 }
 
-// Show albums view
 function showAlbumsView() {
     document.getElementById('albums-container').parentElement.style.display = 'block';
     document.getElementById('selected-album-view').style.display = 'none';
@@ -538,7 +530,224 @@ function showAlbumsView() {
     exitSelectionMode();
 }
 
-// Create album
+function checkForChallengeSelection() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('select') === 'challenge') {
+        setTimeout(() => {
+            enterChallengeSelectionMode();
+        }, 500);
+    }
+}
+
+function enterChallengeSelectionMode() {
+    if (!currentAlbum) {
+        alert('Please open an album first to select photos for challenge');
+        return;
+    }
+    
+    if (!isSelectionMode) {
+        enterSelectionMode();
+    }
+}
+
+async function submitSelectedToChallenge() {
+    if (selectedPhotos.length === 0) {
+        alert('Please select at least one photo');
+        return;
+    }
+    
+    const pendingChallenge = sessionStorage.getItem('pendingChallenge');
+    if (!pendingChallenge) {
+        alert('No active challenge found');
+        return;
+    }
+    
+    const challenge = JSON.parse(pendingChallenge);
+    const token = localStorage.getItem('token');
+    
+    const selectedItems = currentAlbum.photos.filter(p => selectedPhotos.includes(p.id));
+    
+    if (selectedItems.length === 0) return;
+    
+    if (selectedItems.length === 1) {
+        const photo = selectedItems[0];
+        showChallengeSubmitModal(photo, challenge);
+    } else {
+        showPhotoSelectionModal(selectedItems, challenge);
+    }
+}
+
+function showChallengeSubmitModal(photo, challenge) {
+    const modalHtml = `
+        <div class="modal fade" id="challengeSubmitModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content glass-card">
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">
+                            <i class="bi bi-trophy-fill text-warning me-2"></i>
+                            Submit to Challenge: ${challenge.theme}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="text-center mb-4">
+                            <img src="${photo.image_path}" class="img-fluid rounded" style="max-height: 200px;">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Challenge Theme</label>
+                            <input type="text" class="form-control" value="${challenge.theme}" readonly>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Style</label>
+                            <input type="text" class="form-control" value="${photo.style || 'Original'}" readonly>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" id="challenge-description" rows="3" placeholder="Tell us about your creation..."></textarea>
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-gradient" onclick="confirmChallengeSubmit('${photo.id}', '${photo.image_path}', '${photo.style || 'Original'}')">
+                                <i class="bi bi-cloud-upload me-2"></i>
+                                Submit to Challenge
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('challengeSubmitModal'));
+    modal.show();
+    
+    document.getElementById('challengeSubmitModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+}
+
+function showPhotoSelectionModal(photos, challenge) {
+    let photosHtml = '';
+    photos.forEach(photo => {
+        photosHtml += `
+            <div class="col-6 mb-2">
+                <div class="card bg-dark border-primary photo-select-card" onclick="selectPhotoForChallenge('${photo.id}', '${photo.image_path}', '${photo.style || 'Original'}')">
+                    <img src="${photo.image_path}" class="card-img-top" style="aspect-ratio: 1; object-fit: cover;">
+                    <div class="card-body p-2 text-center">
+                        <small>${photo.style || 'Original'}</small>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    const modalHtml = `
+        <div class="modal fade" id="photoSelectModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content glass-card">
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">
+                            <i class="bi bi-trophy-fill text-warning me-2"></i>
+                            Select Photo for Challenge
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted mb-3">Choose which photo to submit to "${challenge.theme}"</p>
+                        <div class="row g-2">
+                            ${photosHtml}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('photoSelectModal'));
+    modal.show();
+    
+    document.getElementById('photoSelectModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+}
+
+function selectPhotoForChallenge(photoId, imagePath, style) {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('photoSelectModal'));
+    modal.hide();
+    
+    const pendingChallenge = sessionStorage.getItem('pendingChallenge');
+    if (pendingChallenge) {
+        const challenge = JSON.parse(pendingChallenge);
+        showChallengeSubmitModal({ id: photoId, image_path: imagePath, style: style }, challenge);
+    }
+}
+
+async function confirmChallengeSubmit(photoId, imagePath, style) {
+    const description = document.getElementById('challenge-description').value;
+    const token = localStorage.getItem('token');
+    const pendingChallenge = sessionStorage.getItem('pendingChallenge');
+    
+    if (!description.trim()) {
+        alert('Please add a description');
+        return;
+    }
+    
+    if (!pendingChallenge) {
+        alert('No active challenge found');
+        return;
+    }
+    
+    const challenge = JSON.parse(pendingChallenge);
+    
+    const submitBtn = document.querySelector('#challengeSubmitModal .btn-gradient');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+    
+    try {
+        const response = await fetch('/api/challenge/submit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({
+                image_path: imagePath,
+                style: style,
+                description: description,
+                challenge_id: challenge.id
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.code === 200) {
+            alert('Successfully submitted to challenge!');
+            
+            const modal = bootstrap.Modal.getInstance(document.getElementById('challengeSubmitModal'));
+            modal.hide();
+            
+            sessionStorage.removeItem('pendingChallenge');
+            
+            exitSelectionMode();
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            urlParams.delete('select');
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, '', newUrl);
+        } else {
+            alert(data.error || 'Failed to submit');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to submit. Please try again.');
+    }
+}
+
 async function createAlbum(e) {
     e.preventDefault();
     
@@ -607,7 +816,6 @@ async function createAlbum(e) {
     }
 }
 
-// Upload images
 async function uploadImages(e) {
     e.preventDefault();
     
@@ -675,7 +883,6 @@ async function uploadImages(e) {
     }
 }
 
-// Preview images before upload
 function previewImages() {
     const files = document.getElementById('image-files').files;
     const container = document.getElementById('image-preview-container');
@@ -710,7 +917,6 @@ function previewImages() {
     }
 }
 
-// Edit album
 async function editAlbum(albumId) {
     const album = albums.find(a => a.id === albumId);
     if (!album) return;
@@ -723,7 +929,6 @@ async function editAlbum(albumId) {
     modal.show();
 }
 
-// Update album
 async function updateAlbum(e) {
     e.preventDefault();
 
@@ -786,7 +991,6 @@ async function updateAlbum(e) {
     }
 }
 
-// Delete album
 async function deleteAlbum(albumId) {
     const token = localStorage.getItem('token');
     console.log('🗑️ Delete album token:', token ? 'Present' : 'Missing');
@@ -840,14 +1044,12 @@ async function deleteAlbum(albumId) {
     }
 }
 
-// Delete current album
 function deleteCurrentAlbum() {
     if (currentAlbum) {
         deleteAlbum(currentAlbum.id);
     }
 }
 
-// Delete photo
 async function deletePhoto(photoId) {
     const token = localStorage.getItem('token');
     console.log('🗑️ Delete photo token:', token ? 'Present' : 'Missing');
@@ -898,7 +1100,6 @@ async function deletePhoto(photoId) {
     }
 }
 
-// Delete current photo
 function deleteCurrentPhoto() {
     const photoId = document.getElementById('detail-photo-image').dataset.photoId;
     if (photoId) {
@@ -906,7 +1107,6 @@ function deleteCurrentPhoto() {
     }
 }
 
-// Delete selected photos
 async function deleteSelected() {
     if (selectedPhotos.length === 0) return;
     
@@ -961,7 +1161,6 @@ async function deleteSelected() {
     }
 }
 
-// Download photo
 function downloadPhoto(photoPath, filename) {
     const link = document.createElement('a');
     link.href = photoPath;
@@ -971,7 +1170,6 @@ function downloadPhoto(photoPath, filename) {
     document.body.removeChild(link);
 }
 
-// Download current photo
 function downloadCurrentPhoto() {
     const photoPath = document.getElementById('detail-photo-image').dataset.photoPath;
     const filename = document.getElementById('detail-photo-filename').textContent;
@@ -980,7 +1178,6 @@ function downloadCurrentPhoto() {
     }
 }
 
-// Download selected photos
 async function downloadSelected() {
     if (selectedPhotos.length === 0) return;
     
@@ -1031,7 +1228,6 @@ async function downloadSelected() {
     }
 }
 
-// Show success message
 function showSuccessMessage(message) {
     const alertDiv = document.createElement('div');
     alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
@@ -1048,7 +1244,6 @@ function showSuccessMessage(message) {
     }, 3000);
 }
 
-// Show empty state
 function showEmptyState() {
     const container = document.getElementById('albums-container');
     container.innerHTML = `
@@ -1064,7 +1259,6 @@ function showEmptyState() {
     `;
 }
 
-// Format file size
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -1073,10 +1267,12 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Make functions global for onclick handlers
 window.editAlbum = editAlbum;
 window.deleteAlbum = deleteAlbum;
 window.downloadSelected = downloadSelected;
 window.deleteSelected = deleteSelected;
 window.exitSelectionMode = exitSelectionMode;
 window.enterSelectionMode = enterSelectionMode;
+window.submitSelectedToChallenge = submitSelectedToChallenge;
+window.selectPhotoForChallenge = selectPhotoForChallenge;
+window.confirmChallengeSubmit = confirmChallengeSubmit;

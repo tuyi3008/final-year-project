@@ -52,9 +52,7 @@
         </nav>
     </header>
 
-    <!-- Main Container -->
     <div class="container py-4">
-        <!-- Page Header -->
         <div class="header text-center mb-5">
             <div class="logo mb-3">
                 <span class="logo-icon">
@@ -65,7 +63,6 @@
             <p class="tagline">Discover trending creations and join weekly challenges</p>
         </div>
 
-        <!-- Weekly Challenge Section -->
         <section class="mb-5">
             <div class="d-flex align-items-center mb-4">
                 <h2 class="h3 fw-bold mb-0">
@@ -78,7 +75,6 @@
             </div>
             
             <div class="challenge-card" id="weekly-challenge">
-                <!-- Challenge content will be loaded here -->
                 <div class="text-center py-5">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
@@ -87,7 +83,6 @@
             </div>
         </section>
 
-        <!-- This Week's Trending -->
         <section class="mb-5">
             <div class="d-flex align-items-center mb-4">
                 <h2 class="h3 fw-bold mb-0">
@@ -100,7 +95,6 @@
             </div>
             
             <div class="trending-grid" id="trending-container">
-                <!-- Trending artworks will be loaded here -->
                 <div class="text-center py-5">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
@@ -109,7 +103,6 @@
             </div>
         </section>
 
-        <!-- Challenge Submissions -->
         <section>
             <div class="d-flex align-items-center mb-4">
                 <h2 class="h3 fw-bold mb-0">
@@ -123,7 +116,6 @@
                 </div>
             </div>
 
-            <!-- Filter Bar for Challenge Submissions -->
             <div class="filter-bar glass-card p-3 mb-4">
                 <div class="d-flex flex-wrap align-items-center gap-3">
                     <div class="filter-group">
@@ -144,12 +136,8 @@
                 </div>
             </div>
 
-            <!-- Submissions Grid -->
-            <div class="submissions-grid" id="submissions-container">
-                <!-- Submissions will be loaded here -->
-            </div>
+            <div class="submissions-grid" id="submissions-container"></div>
 
-            <!-- Load More Button -->
             <div class="text-center mt-4 mb-5">
                 <button class="btn btn-outline-light px-5" id="load-more-submissions" style="display: none;">
                     <i class="bi bi-arrow-down-circle me-2"></i>
@@ -158,7 +146,6 @@
             </div>
         </section>
 
-        <!-- Join Challenge Button -->
         <div class="join-challenge-fab">
             <button class="btn btn-gradient btn-lg rounded-circle" id="join-challenge-btn" data-bs-toggle="modal" data-bs-target="#joinChallengeModal">
                 <i class="bi bi-plus-lg"></i>
@@ -167,7 +154,6 @@
         </div>
     </div>
 
-    <!-- Challenge Details Modal -->
     <div class="modal fade" id="challengeModal" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content glass-card">
@@ -179,15 +165,12 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="challenge-detail-content">
-                        <!-- Challenge details will be loaded here -->
-                    </div>
+                    <div id="challenge-detail-content"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Join Challenge Modal -->
     <div class="modal fade" id="joinChallengeModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content glass-card">
@@ -199,16 +182,33 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="text-center mb-4" id="no-transformed-image">
+                    <div class="text-center mb-4" id="no-transformed-image" style="display: block;">
                         <div class="mb-3">
                             <i class="bi bi-images" style="font-size: 4rem; color: var(--text-muted);"></i>
                         </div>
-                        <h5>No transformed image found</h5>
-                        <p class="text-muted mb-4">Please transform an image first before submitting to challenge</p>
-                        <a href="/" class="btn btn-gradient">
-                            <i class="bi bi-magic me-2"></i>
-                            Go to Transform
-                        </a>
+                        <h5>No image selected</h5>
+                        <p class="text-muted mb-4">Choose a source for your submission</p>
+                    </div>
+
+                    <div class="row g-3 mb-4" id="source-options">
+                        <div class="col-6">
+                            <div class="card bg-dark border-primary source-card" onclick="selectFromAlbum()">
+                                <div class="card-body text-center py-4">
+                                    <i class="bi bi-images fs-1 text-primary mb-3"></i>
+                                    <h6>My Albums</h6>
+                                    <p class="small text-muted">Choose from your saved photos</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="card bg-dark border-success source-card" onclick="showUploadOption()">
+                                <div class="card-body text-center py-4">
+                                    <i class="bi bi-cloud-upload fs-1 text-success mb-3"></i>
+                                    <h6>Upload New</h6>
+                                    <p class="small text-muted">Select a file from your computer</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="join-challenge-form" style="display: none;">
@@ -238,12 +238,48 @@
                             </button>
                         </div>
                     </div>
+
+                    <div id="upload-content" style="display: none;">
+                        <div class="upload-area p-4 text-center border border-2 border-dashed rounded mb-3">
+                            <i class="bi bi-cloud-arrow-up fs-1 text-muted mb-3"></i>
+                            <h6>Drag & drop or click to upload</h6>
+                            <p class="small text-muted mb-3">Supports: JPG, PNG (Max 10MB)</p>
+                            <input type="file" id="challenge-file-input" class="d-none" accept="image/*">
+                            <button class="btn btn-outline-primary" onclick="document.getElementById('challenge-file-input').click()">
+                                Choose File
+                            </button>
+                        </div>
+                        <div id="upload-preview" class="text-center mt-3" style="display: none;">
+                            <img src="" class="img-fluid rounded" style="max-height: 200px;">
+                        </div>
+                        <div id="upload-form" style="display: none;" class="mt-3">
+                            <div class="mb-3">
+                                <label class="form-label">Style</label>
+                                <select class="form-select" id="upload-style">
+                                    <option value="sketch">Sketch</option>
+                                    <option value="anime">Anime</option>
+                                    <option value="ink">Ink Wash</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Description</label>
+                                <textarea class="form-control" id="upload-description" rows="2" placeholder="Tell us about your creation..."></textarea>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-gradient" onclick="processAndSubmit()">
+                                    <i class="bi bi-cloud-upload me-2"></i>Process & Submit
+                                </button>
+                                <button class="btn btn-outline-light" onclick="resetJoinModal()">
+                                    <i class="bi bi-arrow-left me-2"></i>Back
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Submission Detail Modal -->
     <div class="modal fade" id="submissionModal" tabindex="-1">
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content glass-card">
@@ -255,15 +291,12 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-0">
-                    <div class="submission-detail-container" id="submission-detail-content">
-                        <!-- Submission detail will be loaded here -->
-                    </div>
+                    <div class="submission-detail-container" id="submission-detail-content"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Footer -->
     <footer class="text-center mt-5 pt-5 border-top border-dark">
         <p class="text-muted">
             <i class="bi bi-c-circle me-1"></i> 2026 StyleTrans AI • 
