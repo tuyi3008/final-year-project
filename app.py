@@ -1030,6 +1030,66 @@ async def get_user_stats(current_user: UserInDB = Depends(get_current_user_stric
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
+# Gallery Like API
+# =============================
+
+@app.post("/api/gallery/{image_id}/like", summary="Like/unlike gallery image")
+async def like_gallery_image(
+    image_id: str,
+    current_user: Optional[UserInDB] = Depends(get_current_user)
+):
+    """Like or unlike a gallery image"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Find the image
+        image = await db.gallery.find_one({"_id": ObjectId(image_id)})
+        if not image:
+            return JSONResponse({"code": 404, "error": "Image not found"}, status_code=404)
+        
+        # If user is logged in, track unique likes
+        if current_user:
+            # Check if user already liked
+            like = await db.gallery_likes.find_one({
+                "image_id": image_id,
+                "user_id": current_user.id
+            })
+            
+            if like:
+                # Unlike
+                await db.gallery_likes.delete_one({"_id": like["_id"]})
+                await db.gallery.update_one(
+                    {"_id": ObjectId(image_id)},
+                    {"$inc": {"likes": -1}}
+                )
+                return {"code": 200, "message": "Unliked", "liked": False}
+            else:
+                # Like
+                await db.gallery_likes.insert_one({
+                    "image_id": image_id,
+                    "user_id": current_user.id,
+                    "created_at": datetime.utcnow()
+                })
+                await db.gallery.update_one(
+                    {"_id": ObjectId(image_id)},
+                    {"$inc": {"likes": 1}}
+                )
+                return {"code": 200, "message": "Liked", "liked": True}
+        else:
+            # Anonymous like - just increment counter
+            await db.gallery.update_one(
+                {"_id": ObjectId(image_id)},
+                {"$inc": {"likes": 1}}
+            )
+            return {"code": 200, "message": "Liked", "liked": True}
+        
+    except Exception as e:
+        print(f"Error liking image: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+# =============================
 # Image helpers (FIXED VERSION)
 # =============================
 transform = T.Compose([

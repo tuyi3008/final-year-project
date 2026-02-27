@@ -39,6 +39,9 @@ function renderGallery(data = galleryData) {
         // Format date
         const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date';
         
+        // Check if current user has liked this image
+        const isLiked = checkIfUserLiked(item._id);
+        
         col.innerHTML = `
             <div class="gallery-item">
                 <img src="/${item.image_path}" alt="${item.style} style">
@@ -51,8 +54,16 @@ function renderGallery(data = galleryData) {
                         <i class="bi bi-calendar3 me-1"></i>${date}
                     </p>
                     <div class="d-flex justify-content-between align-items-center">
-                        <span class="badge bg-primary">${item.likes || 0} ❤️</span>
-                        <span class="badge bg-secondary">${item.views || 0} 👁️</span>
+                        <button class="btn-like ${isLiked ? 'liked' : ''}" 
+                                onclick="likeGalleryItem('${item._id}', this)"
+                                data-likes="${item.likes || 0}">
+                            <i class="bi ${isLiked ? 'bi-heart-fill' : 'bi-heart'}"></i>
+                            <span class="likes-count">${item.likes || 0}</span>
+                        </button>
+                        <button class="btn-download" onclick="downloadGalleryImage('${item.image_path}')">
+                            <i class="bi bi-download"></i>
+                            <span>Download</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -63,6 +74,125 @@ function renderGallery(data = galleryData) {
     
     // Update stats
     updateStats();
+}
+
+// Function to check if user liked an image
+function checkIfUserLiked(imageId) {
+    const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
+    return likedImages.includes(imageId);
+}
+
+// Function to like/unlike gallery item
+async function likeGalleryItem(imageId, buttonElement) {
+    const token = localStorage.getItem('token');
+    const isLiked = buttonElement.classList.contains('liked');
+    const likesSpan = buttonElement.querySelector('.likes-count');
+    let currentLikes = parseInt(likesSpan.textContent);
+    
+    // Optimistic UI update
+    if (isLiked) {
+        buttonElement.classList.remove('liked');
+        buttonElement.querySelector('i').className = 'bi bi-heart';
+        likesSpan.textContent = currentLikes - 1;
+        
+        // Update localStorage
+        const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
+        const updatedLiked = likedImages.filter(id => id !== imageId);
+        localStorage.setItem('likedGalleryImages', JSON.stringify(updatedLiked));
+    } else {
+        buttonElement.classList.add('liked');
+        buttonElement.querySelector('i').className = 'bi bi-heart-fill';
+        likesSpan.textContent = currentLikes + 1;
+        
+        // Update localStorage
+        const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
+        likedImages.push(imageId);
+        localStorage.setItem('likedGalleryImages', JSON.stringify(likedImages));
+    }
+    
+    // If user is logged in, send to backend
+    if (token) {
+        try {
+            const response = await fetch(`http://localhost:8000/api/gallery/${imageId}/like`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                // Revert on error
+                if (isLiked) {
+                    buttonElement.classList.add('liked');
+                    buttonElement.querySelector('i').className = 'bi bi-heart-fill';
+                    likesSpan.textContent = currentLikes;
+                } else {
+                    buttonElement.classList.remove('liked');
+                    buttonElement.querySelector('i').className = 'bi bi-heart';
+                    likesSpan.textContent = currentLikes;
+                }
+                console.error('Failed to update like on server');
+            }
+        } catch (error) {
+            console.error('Error updating like:', error);
+            // Revert on error
+            if (isLiked) {
+                buttonElement.classList.add('liked');
+                buttonElement.querySelector('i').className = 'bi bi-heart-fill';
+                likesSpan.textContent = currentLikes;
+            } else {
+                buttonElement.classList.remove('liked');
+                buttonElement.querySelector('i').className = 'bi bi-heart';
+                likesSpan.textContent = currentLikes;
+            }
+        }
+    }
+}
+
+// Function to download gallery image
+function downloadGalleryImage(imagePath) {
+    // Increment download count in backend (optional)
+    const token = localStorage.getItem('token');
+    if (token) {
+        // You can add an API call to track downloads if needed
+        fetch(`http://localhost:8000/api/gallery/download`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ image_path: imagePath })
+        }).catch(err => console.error('Error tracking download:', err));
+    }
+    
+    // Download the image
+    const link = document.createElement('a');
+    link.href = `/${imagePath}`;
+    link.download = imagePath.split('/').pop();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Show success message
+    showDownloadMessage();
+}
+
+// Function to show download success message
+function showDownloadMessage() {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+    messageDiv.style.zIndex = '9999';
+    messageDiv.innerHTML = `
+        <i class="bi bi-check-circle-fill me-2"></i>
+        Image downloaded successfully!
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(messageDiv);
+    
+    setTimeout(() => {
+        messageDiv.remove();
+    }, 3000);
 }
 
 // Function to update stats (total images per style)
@@ -101,7 +231,7 @@ async function loadGalleryFromBackend() {
             </div>
         `;
         
-        const response = await fetch('/gallery/images');
+        const response = await fetch('http://localhost:8000/gallery/images');
         const data = await response.json();
         
         if (data.code === 200 && data.images && data.images.length > 0) {
@@ -152,3 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadGalleryFromBackend();
     setupFilterButtons();
 });
+
+// Make functions global for onclick handlers
+window.likeGalleryItem = likeGalleryItem;
+window.downloadGalleryImage = downloadGalleryImage;
