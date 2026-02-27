@@ -32,9 +32,9 @@
                     <i class="bi bi-collection"></i>
                     <span>Gallery</span>
                 </a>
-                <a href="profile.html" class="active">
-                    <i class="bi bi-person-circle"></i>
-                    <span>Profile</span>
+                <a href="/static/photos.html">
+                    <i class="bi bi-images"></i>
+                    <span>My Photos</span>
                 </a>
                 <a href="community.html">
                     <i class="bi bi-people"></i>
@@ -65,7 +65,7 @@
     
     <div class="container py-5">
         <!-- Profile Header -->
-        <div class="profile-header">
+        <div class="profile-header glass-card p-4 mb-4">
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <div class="d-flex align-items-center gap-4">
@@ -73,14 +73,24 @@
                             <i class="bi bi-person-circle"></i>
                         </div>
                         <div>
-                            <h2 id="profileName">Loading...</h2>
+                            <h2 id="profileName" class="mb-1">Loading...</h2>
                             <p id="profileEmail" class="text-muted mb-2">Loading...</p>
-                            <span class="badge bg-success">Active</span>
+                            <div class="d-flex gap-3">
+                                <span class="badge bg-success">
+                                    <i class="bi bi-check-circle-fill me-1"></i>Active
+                                </span>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar-plus me-1"></i>Joined: <span id="joinDate">Jan 2026</span>
+                                </small>
+                                <small class="text-muted">
+                                    <i class="bi bi-clock me-1"></i>Last active: <span id="lastActive">Today</span>
+                                </small>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                    <button class="btn btn-outline-light me-2">
+                    <button class="btn btn-outline-light me-2" data-bs-toggle="modal" data-bs-target="#editProfileModal">
                         <i class="bi bi-pencil"></i> Edit Profile
                     </button>
                 </div>
@@ -90,21 +100,39 @@
         <!-- Stats Cards -->
         <div class="row g-4 mb-5">
             <div class="col-md-4">
-                <div class="stat-card">
+                <div class="stat-card glass-card p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="stat-label">Total Transformations</span>
+                        <i class="bi bi-magic fs-4 text-primary"></i>
+                    </div>
                     <div class="stat-number" id="transformCount">0</div>
-                    <div class="stat-label">Total Transformations</div>
+                    <div class="progress mt-3" style="height: 6px;">
+                        <div class="progress-bar bg-primary" style="width: 0%" id="transformProgress"></div>
+                    </div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="stat-card">
+                <div class="stat-card glass-card p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="stat-label">Favorites</span>
+                        <i class="bi bi-heart-fill fs-4 text-danger"></i>
+                    </div>
                     <div class="stat-number" id="favoriteCount">0</div>
-                    <div class="stat-label">Favorites</div>
+                    <div class="progress mt-3" style="height: 6px;">
+                        <div class="progress-bar bg-danger" style="width: 0%" id="favoriteProgress"></div>
+                    </div>
                 </div>
             </div>
             <div class="col-md-4">
-                <div class="stat-card">
+                <div class="stat-card glass-card p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <span class="stat-label">Shared to Gallery</span>
+                        <i class="bi bi-share-fill fs-4 text-success"></i>
+                    </div>
                     <div class="stat-number" id="shareCount">0</div>
-                    <div class="stat-label">Shared to Community</div>
+                    <div class="progress mt-3" style="height: 6px;">
+                        <div class="progress-bar bg-success" style="width: 0%" id="shareProgress"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -150,6 +178,97 @@
                         <i class="bi bi-heart display-4 mb-3"></i>
                         <p>No favorites yet</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Activity Tab -->
+            <div class="tab-pane fade" id="activity">
+                <div class="activity-timeline p-4" id="activityContainer">
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-activity display-4 mb-3"></i>
+                        <p>No recent activity</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div class="tab-pane fade" id="settings">
+                <div class="row">
+                    <div class="col-md-6 mb-4">
+                        <div class="glass-card p-4">
+                            <h6 class="mb-3">Account Settings</h6>
+                            <form id="settingsForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Username</label>
+                                    <input type="text" class="form-control" id="settingsUsername" placeholder="Enter username">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="settingsEmail" placeholder="Enter email">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Bio</label>
+                                    <textarea class="form-control" id="settingsBio" rows="3" placeholder="Tell us about yourself..."></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-gradient w-100">Save Changes</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-4">
+                        <div class="glass-card p-4">
+                            <h6 class="mb-3">Notification Preferences</h6>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="emailNotifications" checked>
+                                <label class="form-check-label" for="emailNotifications">Email Notifications</label>
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="pushNotifications" checked>
+                                <label class="form-check-label" for="pushNotifications">Push Notifications</label>
+                            </div>
+                            <div class="form-check form-switch mb-4">
+                                <input class="form-check-input" type="checkbox" id="newsletter" checked>
+                                <label class="form-check-label" for="newsletter">Newsletter</label>
+                            </div>
+                            <button class="btn btn-outline-danger w-100">
+                                <i class="bi bi-box-arrow-right me-2"></i>Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Profile Modal -->
+    <div class="modal fade" id="editProfileModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content glass-card">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title">
+                        <i class="bi bi-pencil-square me-2 text-primary"></i>
+                        Edit Profile
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editProfileForm">
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" id="editUsername" placeholder="Enter username">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Bio</label>
+                            <textarea class="form-control" id="editBio" rows="3" placeholder="Tell us about yourself..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Avatar</label>
+                            <input type="file" class="form-control" accept="image/*">
+                            <small class="text-muted">Upload a profile picture (optional)</small>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-gradient">Save Changes</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
