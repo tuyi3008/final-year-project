@@ -21,9 +21,9 @@ function renderGallery(data = galleryData) {
     
     if (data.length === 0) {
         galleryGrid.innerHTML = `
-            <div class="col-12 text-center py-5">
-                <i class="bi bi-images display-1 text-muted mb-3"></i>
-                <h4 class="text-muted">No images in gallery yet</h4>
+            <div class="empty-state">
+                <i class="bi bi-images"></i>
+                <h4>No images in gallery yet</h4>
                 <p class="text-muted">Be the first to publish your creations!</p>
             </div>
         `;
@@ -33,8 +33,9 @@ function renderGallery(data = galleryData) {
     galleryGrid.innerHTML = '';
     
     data.forEach(item => {
-        const col = document.createElement('div');
-        col.className = 'col-md-4 col-lg-3';
+        // 不再创建 col 包装器，直接创建 gallery-item
+        const galleryItem = document.createElement('div');
+        galleryItem.className = 'gallery-item';
         
         // Format date
         const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date';
@@ -45,18 +46,18 @@ function renderGallery(data = galleryData) {
         // Check if current user has liked this image (only if logged in)
         const isLiked = isLoggedIn ? checkIfUserLiked(item._id) : false;
         
-        col.innerHTML = `
-            <div class="gallery-item">
+        galleryItem.innerHTML = `
+            <div class="gallery-image">
                 <img src="/${item.image_path}" alt="${item.style} style">
                 <div class="gallery-info">
-                    <h6 class="mb-1">${item.style.charAt(0).toUpperCase() + item.style.slice(1)} Style</h6>
-                    <p class="small text-muted mb-1">
-                        <i class="bi bi-person-circle me-1"></i>${item.username || 'Anonymous'}
+                    <h6>${item.style.charAt(0).toUpperCase() + item.style.slice(1)} Style</h6>
+                    <p class="small">
+                        <i class="bi bi-person-circle"></i> ${item.username || 'Anonymous'}
                     </p>
-                    <p class="small text-muted mb-2">
-                        <i class="bi bi-calendar3 me-1"></i>${date}
+                    <p class="small">
+                        <i class="bi bi-calendar3"></i> ${date}
                     </p>
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center mt-2">
                         <button class="btn-like ${isLiked ? 'liked' : ''}" 
                                 onclick="likeGalleryItem('${item._id}', this)"
                                 data-likes="${item.likes || 0}">
@@ -72,7 +73,7 @@ function renderGallery(data = galleryData) {
             </div>
         `;
         
-        galleryGrid.appendChild(col);
+        galleryGrid.appendChild(galleryItem);
     });
     
     // Update stats
