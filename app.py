@@ -1090,6 +1090,94 @@ async def like_gallery_image(
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
+# User Profile API
+# =============================
+
+@app.put("/api/user/profile", summary="Update user profile")
+async def update_user_profile(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Update user profile information"""
+    try:
+        form = await request.form()
+        username = form.get('username')
+        bio = form.get('bio')
+        avatar_file = form.get('avatar')
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        update_data = {}
+        
+        if username:
+            update_data["username"] = username
+        
+        if bio:
+            update_data["bio"] = bio
+        
+        # Handle avatar upload
+        if avatar_file and avatar_file.filename:
+            # Save avatar image
+            file_id = str(uuid.uuid4())
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"avatar_{current_user.id}_{timestamp}_{file_id}.jpg"
+            filepath = f"uploads/avatars/{filename}"
+            
+            os.makedirs("uploads/avatars", exist_ok=True)
+            
+            content = await avatar_file.read()
+            with open(filepath, "wb") as f:
+                f.write(content)
+            
+            update_data["avatar_path"] = filepath
+        
+        if update_data:
+            update_data["updated_at"] = datetime.utcnow()
+            
+            await db.users.update_one(
+                {"_id": ObjectId(current_user.id)},
+                {"$set": update_data}
+            )
+        
+        return {
+            "code": 200,
+            "message": "Profile updated successfully",
+            "username": username or current_user.username,
+            "bio": bio or ""
+        }
+        
+    except Exception as e:
+        print(f"Error updating profile: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.get("/api/user/profile", summary="Get user profile")
+async def get_user_profile(current_user: UserInDB = Depends(get_current_user_strict)):
+    """Get full user profile including bio and avatar"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        user = await db.users.find_one({"_id": ObjectId(current_user.id)})
+        if not user:
+            return JSONResponse({"code": 404, "error": "User not found"}, status_code=404)
+        
+        return {
+            "code": 200,
+            "username": user.get("username"),
+            "email": user.get("email"),
+            "bio": user.get("bio", ""),
+            "avatar_path": user.get("avatar_path"),
+            "created_at": user.get("created_at")
+        }
+        
+    except Exception as e:
+        print(f"Error getting profile: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+# =============================
 # Image helpers (FIXED VERSION)
 # =============================
 transform = T.Compose([
