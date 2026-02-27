@@ -998,6 +998,38 @@ async def upload_images_to_album(
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
+# User Stats API
+# =============================
+
+@app.get("/api/user/stats", summary="Get user statistics")
+async def get_user_stats(current_user: UserInDB = Depends(get_current_user_strict)):
+    """Get user statistics: transform count, favorite count, share count"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Get transform count from history
+        transform_count = await db.history.count_documents({"user_id": current_user.id})
+        
+        # Get favorites count
+        favorite_count = await db.favorites.count_documents({"user_id": current_user.id})
+        
+        # Get share count (published to gallery)
+        share_count = await db.gallery.count_documents({"user_id": current_user.id})
+        
+        return {
+            "code": 200,
+            "transformCount": transform_count,
+            "favoriteCount": favorite_count,
+            "shareCount": share_count
+        }
+        
+    except Exception as e:
+        print(f"Error loading stats: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+# =============================
 # Image helpers (FIXED VERSION)
 # =============================
 transform = T.Compose([

@@ -28,11 +28,55 @@ function loadUserProfile() {
     document.getElementById('profileEmail').textContent = userEmail;
 }
 
-function loadUserStats() {
-    // TODO: Fetch from backend
-    document.getElementById('transformCount').textContent = '12';
-    document.getElementById('favoriteCount').textContent = '5';
-    document.getElementById('shareCount').textContent = '3';
+async function loadUserStats() {
+    console.log('📊 Loading user stats from backend...');
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+        console.log('❌ No token for stats');
+        return;
+    }
+    
+    try {
+        const response = await fetch('http://localhost:8000/api/user/stats', {
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        console.log('📥 Stats response status:', response.status);
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
+        
+        const data = await response.json();
+        console.log('📦 Stats data:', data);
+        
+        if (data.code === 200) {
+            document.getElementById('transformCount').textContent = data.transformCount || '0';
+            document.getElementById('favoriteCount').textContent = data.favoriteCount || '0';
+            document.getElementById('shareCount').textContent = data.shareCount || '0';
+        } else {
+            console.error('Failed to load stats:', data.error);
+
+            document.getElementById('transformCount').textContent = '0';
+            document.getElementById('favoriteCount').textContent = '0';
+            document.getElementById('shareCount').textContent = '0';
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+
+        document.getElementById('transformCount').textContent = '0';
+        document.getElementById('favoriteCount').textContent = '0';
+        document.getElementById('shareCount').textContent = '0';
+    }
 }
 
 async function loadHistory() {
