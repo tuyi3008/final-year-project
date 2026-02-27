@@ -39,8 +39,11 @@ function renderGallery(data = galleryData) {
         // Format date
         const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Unknown date';
         
-        // Check if current user has liked this image
-        const isLiked = checkIfUserLiked(item._id);
+        // Check if user is logged in
+        const isLoggedIn = !!localStorage.getItem('token');
+        
+        // Check if current user has liked this image (only if logged in)
+        const isLiked = isLoggedIn ? checkIfUserLiked(item._id) : false;
         
         col.innerHTML = `
             <div class="gallery-item">
@@ -84,88 +87,74 @@ function checkIfUserLiked(imageId) {
 
 // Function to like/unlike gallery item
 async function likeGalleryItem(imageId, buttonElement) {
+    // Check if user is logged in
     const token = localStorage.getItem('token');
+    if (!token) {
+        // Show login modal
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal('Please login to like images');
+        } else {
+            alert('Please login to like images');
+        }
+        return;
+    }
+    
     const isLiked = buttonElement.classList.contains('liked');
     const likesSpan = buttonElement.querySelector('.likes-count');
     let currentLikes = parseInt(likesSpan.textContent);
     
-    // Optimistic UI update
-    if (isLiked) {
-        buttonElement.classList.remove('liked');
-        buttonElement.querySelector('i').className = 'bi bi-heart';
-        likesSpan.textContent = currentLikes - 1;
-        
-        // Update localStorage
-        const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
-        const updatedLiked = likedImages.filter(id => id !== imageId);
-        localStorage.setItem('likedGalleryImages', JSON.stringify(updatedLiked));
-    } else {
-        buttonElement.classList.add('liked');
-        buttonElement.querySelector('i').className = 'bi bi-heart-fill';
-        likesSpan.textContent = currentLikes + 1;
-        
-        // Update localStorage
-        const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
-        likedImages.push(imageId);
-        localStorage.setItem('likedGalleryImages', JSON.stringify(likedImages));
-    }
+    // Disable button during API call
+    buttonElement.disabled = true;
     
-    // If user is logged in, send to backend
-    if (token) {
-        try {
-            const response = await fetch(`http://localhost:8000/api/gallery/${imageId}/like`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer ' + token,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (!response.ok) {
-                // Revert on error
-                if (isLiked) {
-                    buttonElement.classList.add('liked');
-                    buttonElement.querySelector('i').className = 'bi bi-heart-fill';
-                    likesSpan.textContent = currentLikes;
-                } else {
-                    buttonElement.classList.remove('liked');
-                    buttonElement.querySelector('i').className = 'bi bi-heart';
-                    likesSpan.textContent = currentLikes;
-                }
-                console.error('Failed to update like on server');
+    try {
+        const response = await fetch(`http://localhost:8000/api/gallery/${imageId}/like`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
             }
-        } catch (error) {
-            console.error('Error updating like:', error);
-            // Revert on error
-            if (isLiked) {
-                buttonElement.classList.add('liked');
-                buttonElement.querySelector('i').className = 'bi bi-heart-fill';
-                likesSpan.textContent = currentLikes;
-            } else {
-                buttonElement.classList.remove('liked');
-                buttonElement.querySelector('i').className = 'bi bi-heart';
-                likesSpan.textContent = currentLikes;
-            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to update like');
         }
+        
+        const data = await response.json();
+        
+        // Update UI based on response
+        if (data.liked) {
+            // Liked
+            buttonElement.classList.add('liked');
+            buttonElement.querySelector('i').className = 'bi bi-heart-fill';
+            likesSpan.textContent = currentLikes + 1;
+            
+            // Update localStorage
+            const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
+            likedImages.push(imageId);
+            localStorage.setItem('likedGalleryImages', JSON.stringify(likedImages));
+        } else {
+            // Unliked
+            buttonElement.classList.remove('liked');
+            buttonElement.querySelector('i').className = 'bi bi-heart';
+            likesSpan.textContent = currentLikes - 1;
+            
+            // Update localStorage
+            const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
+            const updatedLiked = likedImages.filter(id => id !== imageId);
+            localStorage.setItem('likedGalleryImages', JSON.stringify(updatedLiked));
+        }
+        
+    } catch (error) {
+        console.error('Error updating like:', error);
+        alert('Failed to update like. Please try again.');
+    } finally {
+        // Re-enable button
+        buttonElement.disabled = false;
     }
 }
 
 // Function to download gallery image
 function downloadGalleryImage(imagePath) {
-    // Increment download count in backend (optional)
-    const token = localStorage.getItem('token');
-    if (token) {
-        // You can add an API call to track downloads if needed
-        fetch(`http://localhost:8000/api/gallery/download`, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ image_path: imagePath })
-        }).catch(err => console.error('Error tracking download:', err));
-    }
-    
     // Download the image
     const link = document.createElement('a');
     link.href = `/${imagePath}`;
@@ -176,6 +165,19 @@ function downloadGalleryImage(imagePath) {
     
     // Show success message
     showDownloadMessage();
+    
+    // Track download in backend (optional, doesn't require login)
+    const token = localStorage.getItem('token');
+    if (token) {
+        fetch(`http://localhost:8000/api/gallery/download`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ image_path: imagePath })
+        }).catch(err => console.error('Error tracking download:', err));
+    }
 }
 
 // Function to show download success message
