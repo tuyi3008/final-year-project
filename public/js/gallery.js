@@ -1,11 +1,11 @@
 // gallery.js - Gallery with Filter Functionality
 
-let currentFilter = 'all';
+let galleryCurrentFilter = 'all';
 let galleryData = []; // Will be populated from backend
 
 // Function to filter gallery items
 function filterGallery(filter) {
-    currentFilter = filter;
+    galleryCurrentFilter = filter;
     const filteredData = galleryData.filter(item => {
         if (filter === 'all') return true;
         return item.style === filter;

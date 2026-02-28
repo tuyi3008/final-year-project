@@ -140,14 +140,19 @@ function renderTrendingArtworks(artworks) {
     artworks.forEach((artwork, index) => {
         const item = document.createElement('div');
         item.className = 'trending-item';
-        item.onclick = () => viewSubmission(artwork);
         
         const date = artwork.created_at ? new Date(artwork.created_at).toLocaleDateString() : 'Recent';
+        
+        // Check if user is logged in
+        const isLoggedIn = !!localStorage.getItem('token');
+        
+        // Check if current user has liked this image (using gallery like check)
+        const isLiked = isLoggedIn ? checkIfUserLikedGallery(artwork._id) : false;
         
         item.innerHTML = `
             <div class="trending-rank">#${index + 1}</div>
             <div class="trending-likes">
-                <i class="bi bi-heart-fill"></i> ${artwork.likes || 0}
+                <i class="bi bi-heart-fill"></i> <span class="likes-count">${artwork.likes || 0}</span>
             </div>
             <img src="/${artwork.image_path}" alt="${artwork.style}">
             <div class="trending-overlay">
@@ -156,11 +161,29 @@ function renderTrendingArtworks(artworks) {
                     <i class="bi bi-calendar3 me-1"></i>${date}
                 </p>
                 <span class="badge bg-primary mt-1">${artwork.style}</span>
+                <div class="mt-2">
+                    <button class="btn-like btn-sm ${isLiked ? 'liked' : ''}" 
+                            onclick="likeGalleryItem('${artwork._id}', this)"
+                            data-likes="${artwork.likes || 0}">
+                        <i class="bi ${isLiked ? 'bi-heart-fill' : 'bi-heart'}"></i>
+                        <span class="likes-count">${artwork.likes || 0}</span>
+                    </button>
+                </div>
             </div>
         `;
         
+        item.addEventListener('click', function(e) {
+            if (e.target.closest('.btn-like')) return;
+            viewSubmission(artwork);
+        });
+        
         container.appendChild(item);
     });
+}
+
+function checkIfUserLikedGallery(imageId) {
+    const likedImages = JSON.parse(localStorage.getItem('likedGalleryImages') || '[]');
+    return likedImages.includes(imageId);
 }
 
 // Load challenge submissions
@@ -260,7 +283,7 @@ function renderSubmissions() {
         const style = item.style || 'Unknown';
         const username = item.username || 'Anonymous';
         const likes = item.likes || 0;
-        const isLiked = likes > 0; // 这里需要根据实际情况判断是否已点赞
+        const isLiked = likes > 0;
         
         let imagePath = item.image_path || '';
 
@@ -308,7 +331,6 @@ function renderSubmissions() {
         `;
         
         submissionEl.addEventListener('click', function(e) {
-            // 防止点击按钮时触发
             if (e.target.closest('.btn-like')) return;
             viewSubmission(item);
         });
@@ -330,7 +352,7 @@ function viewSubmission(item) {
     }
     
     const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Recent';
-    const isLiked = item.likes > 0; // 或者根据实际点赞状态判断
+    const isLiked = item.likes > 0;
     
     let imagePath = item.image_path || '';
     if (imagePath && !imagePath.startsWith('http')) {
@@ -607,8 +629,7 @@ async function likeSubmission(id) {
         }
         return;
     }
-    
-    // 获取当前点击的按钮
+
     const clickedButton = event?.target?.closest('button');
     if (!clickedButton) return;
     
@@ -630,16 +651,13 @@ async function likeSubmission(id) {
         const data = await response.json();
         
         if (data.code === 200) {
-            // 计算新的点赞数
             const newLikes = data.liked ? currentLikes + 1 : currentLikes - 1;
-            
-            // 更新本地数据
+
             const submission = submissionsData.find(s => s._id === id);
             if (submission) {
                 submission.likes = newLikes;
             }
-            
-            // 更新当前点击的按钮
+
             if (data.liked) {
                 clickedButton.classList.add('liked');
                 clickedButton.querySelector('i').className = 'bi bi-heart-fill';
@@ -648,10 +666,9 @@ async function likeSubmission(id) {
                 clickedButton.querySelector('i').className = 'bi bi-heart';
             }
             likesSpan.textContent = newLikes;
-            
-            // 更新页面上所有相同 ID 的按钮（包括模态框外的其他按钮）
+
             document.querySelectorAll(`.btn-like[onclick*="'${id}'"]`).forEach(btn => {
-                if (btn === clickedButton) return; // 跳过已经更新的按钮
+                if (btn === clickedButton) return;
                 
                 const btnLikesSpan = btn.querySelector('.likes-count');
                 if (data.liked) {
@@ -663,8 +680,7 @@ async function likeSubmission(id) {
                 }
                 if (btnLikesSpan) btnLikesSpan.textContent = newLikes;
             });
-            
-            // 如果模态框打开，同时更新模态框里的点赞按钮
+
             const modalElement = document.getElementById('submissionModal');
             if (modalElement && modalElement.classList.contains('show')) {
                 const modalLikeBtn = modalElement.querySelector(`.btn-like[onclick*="'${id}'"]`);
@@ -679,13 +695,11 @@ async function likeSubmission(id) {
                     }
                     if (modalLikesSpan) modalLikesSpan.textContent = newLikes;
                 }
-                
-                // ==== 新增：更新模态框里的 <h4> 标签 ====
+
                 const modalLikesH4 = modalElement.querySelector('.d-flex.gap-4 .text-center:first-child h4');
                 if (modalLikesH4) {
                     modalLikesH4.textContent = newLikes;
                 }
-                // ==== 新增结束 ====
             }
         }
     } catch (error) {
