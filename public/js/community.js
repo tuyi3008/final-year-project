@@ -260,14 +260,14 @@ function renderSubmissions() {
         const style = item.style || 'Unknown';
         const username = item.username || 'Anonymous';
         const likes = item.likes || 0;
+        const isLiked = likes > 0; // 这里需要根据实际情况判断是否已点赞
+        
         let imagePath = item.image_path || '';
 
         if (imagePath && !imagePath.startsWith('http')) {
-
             if (!imagePath.startsWith('/')) {
                 imagePath = '/' + imagePath;
             }
-
             if (!imagePath.includes('/uploads/')) {
                 imagePath = '/uploads/album_photos/' + imagePath.split('/').pop();
             }
@@ -293,9 +293,12 @@ function renderSubmissions() {
                     <span>${username}</span>
                 </div>
                 <div class="submission-stats">
-                    <span class="submission-likes">
-                        <i class="bi bi-heart-fill"></i> ${likes}
-                    </span>
+                    <button class="btn-like ${isLiked ? 'liked' : ''}" 
+                            onclick="likeSubmission('${item._id}')"
+                            data-likes="${likes}">
+                        <i class="bi ${isLiked ? 'bi-heart-fill' : 'bi-heart'}"></i>
+                        <span class="likes-count">${likes}</span>
+                    </button>
                     <span class="submission-style">${style}</span>
                 </div>
                 <div class="small text-muted mt-2">
@@ -304,7 +307,9 @@ function renderSubmissions() {
             </div>
         `;
         
-        submissionEl.addEventListener('click', function() {
+        submissionEl.addEventListener('click', function(e) {
+            // 防止点击按钮时触发
+            if (e.target.closest('.btn-like')) return;
             viewSubmission(item);
         });
         
@@ -315,7 +320,7 @@ function renderSubmissions() {
 // View submission details
 function viewSubmission(item) {
     console.log('Viewing submission:', item);
-    
+    console.log('Submission ID:', item._id);
     const modalContent = document.getElementById('submission-detail-content');
     const modalElement = document.getElementById('submissionModal');
     
@@ -325,6 +330,7 @@ function viewSubmission(item) {
     }
     
     const date = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Recent';
+    const isLiked = item.likes > 0; // 或者根据实际点赞状态判断
     
     let imagePath = item.image_path || '';
     if (imagePath && !imagePath.startsWith('http')) {
@@ -377,8 +383,11 @@ function viewSubmission(item) {
                 </div>
                 
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-light flex-grow-1" onclick="likeSubmission('${item._id}')">
-                        <i class="bi bi-heart"></i> Like
+                    <button class="btn btn-outline-light flex-grow-1 btn-like ${isLiked ? 'liked' : ''}" 
+                            onclick="likeSubmission('${item._id}')"
+                            data-likes="${item.likes || 0}">
+                        <i class="bi ${isLiked ? 'bi-heart-fill' : 'bi-heart'}"></i>
+                        <span class="likes-count">${item.likes || 0}</span>
                     </button>
                     <button class="btn btn-outline-light flex-grow-1" onclick="shareSubmission('${item._id}')">
                         <i class="bi bi-share"></i> Share
@@ -599,6 +608,17 @@ async function likeSubmission(id) {
         return;
     }
     
+    // 获取当前点击的按钮
+    const clickedButton = event?.target?.closest('button');
+    if (!clickedButton) return;
+    
+    const isLiked = clickedButton.classList.contains('liked');
+    const likesSpan = clickedButton.querySelector('.likes-count');
+    let currentLikes = parseInt(likesSpan?.textContent || '0');
+    
+    // Disable button during API call
+    clickedButton.disabled = true;
+    
     try {
         const response = await fetch(`/api/submission/${id}/like`, {
             method: 'POST',
@@ -610,14 +630,69 @@ async function likeSubmission(id) {
         const data = await response.json();
         
         if (data.code === 200) {
-            const likeBtn = event?.target?.closest('button');
-            if (likeBtn) {
-                likeBtn.innerHTML = '<i class="bi bi-heart-fill text-danger"></i> Liked';
-                likeBtn.disabled = true;
+            // 计算新的点赞数
+            const newLikes = data.liked ? currentLikes + 1 : currentLikes - 1;
+            
+            // 更新本地数据
+            const submission = submissionsData.find(s => s._id === id);
+            if (submission) {
+                submission.likes = newLikes;
+            }
+            
+            // 更新当前点击的按钮
+            if (data.liked) {
+                clickedButton.classList.add('liked');
+                clickedButton.querySelector('i').className = 'bi bi-heart-fill';
+            } else {
+                clickedButton.classList.remove('liked');
+                clickedButton.querySelector('i').className = 'bi bi-heart';
+            }
+            likesSpan.textContent = newLikes;
+            
+            // 更新页面上所有相同 ID 的按钮（包括模态框外的其他按钮）
+            document.querySelectorAll(`.btn-like[onclick*="'${id}'"]`).forEach(btn => {
+                if (btn === clickedButton) return; // 跳过已经更新的按钮
+                
+                const btnLikesSpan = btn.querySelector('.likes-count');
+                if (data.liked) {
+                    btn.classList.add('liked');
+                    btn.querySelector('i').className = 'bi bi-heart-fill';
+                } else {
+                    btn.classList.remove('liked');
+                    btn.querySelector('i').className = 'bi bi-heart';
+                }
+                if (btnLikesSpan) btnLikesSpan.textContent = newLikes;
+            });
+            
+            // 如果模态框打开，同时更新模态框里的点赞按钮
+            const modalElement = document.getElementById('submissionModal');
+            if (modalElement && modalElement.classList.contains('show')) {
+                const modalLikeBtn = modalElement.querySelector(`.btn-like[onclick*="'${id}'"]`);
+                if (modalLikeBtn) {
+                    const modalLikesSpan = modalLikeBtn.querySelector('.likes-count');
+                    if (data.liked) {
+                        modalLikeBtn.classList.add('liked');
+                        modalLikeBtn.querySelector('i').className = 'bi bi-heart-fill';
+                    } else {
+                        modalLikeBtn.classList.remove('liked');
+                        modalLikeBtn.querySelector('i').className = 'bi bi-heart';
+                    }
+                    if (modalLikesSpan) modalLikesSpan.textContent = newLikes;
+                }
+                
+                // ==== 新增：更新模态框里的 <h4> 标签 ====
+                const modalLikesH4 = modalElement.querySelector('.d-flex.gap-4 .text-center:first-child h4');
+                if (modalLikesH4) {
+                    modalLikesH4.textContent = newLikes;
+                }
+                // ==== 新增结束 ====
             }
         }
     } catch (error) {
         console.error('Error liking submission:', error);
+        alert('Failed to like. Please try again.');
+    } finally {
+        clickedButton.disabled = false;
     }
 }
 
