@@ -36,12 +36,66 @@ class AuthManager {
         
         // Load user avatar
         this.loadUserAvatar();
+
+        this.initXPEvents();
         
         // Listen for avatar update events
         window.addEventListener('avatarUpdated', (event) => {
             const { avatarPath } = event.detail;
             this.updateAvatarDisplay(avatarPath);
         });
+    }
+
+    initXPEvents() {
+        window.addEventListener('xpUpdated', (event) => {
+            console.log('XP updated event received:', event.detail);
+
+            if (window.refreshXP) {
+                window.refreshXP();
+            }
+
+            document.dispatchEvent(new CustomEvent('userXPChanged', { 
+                detail: event.detail 
+            }));
+        });
+        
+        console.log('XP events initialized');
+    }
+
+    showXPMessage(message, type = 'info') {
+        this.showMessage(message, type);
+    }
+
+    async getUserXP() {
+        if (!this.isLoggedIn()) return 0;
+        
+        try {
+            const response = await fetch('http://localhost:8000/api/user/profile', {
+                headers: this.getAuthHeaders()
+            });
+            
+            const data = await response.json();
+            
+            if (data.code === 200) {
+                return data.total_xp || 0;
+            }
+        } catch (error) {
+            console.error('Error getting user XP:', error);
+        }
+        
+        return 0;
+    }
+
+    async refreshAllXPDisplays() {
+        if (!this.isLoggedIn()) return;
+        
+        const xp = await this.getUserXP();
+
+        window.dispatchEvent(new CustomEvent('xpUpdated', { 
+            detail: { amount: 0, source: 'refresh', total: xp }
+        }));
+        
+        return xp;
     }
     
     bindLoginButtons() {
@@ -190,6 +244,9 @@ class AuthManager {
                     this.updateUI();
                     // Load avatar after successful login
                     this.loadUserAvatar();
+
+                    this.refreshAllXPDisplays();
+                    
                 }, 1000);
                 
             } else {
@@ -393,6 +450,12 @@ class AuthManager {
         if (navbarAvatar && navbarAvatar.src !== defaultSvg) {
             navbarAvatar.src = defaultSvg;
         }
+        
+        // Also update profile avatar if exists
+        const profileAvatar = document.querySelector('.profile-avatar img');
+        if (profileAvatar && profileAvatar.src !== defaultSvg) {
+            profileAvatar.src = defaultSvg;
+        }
     }
     
     // Get avatar HTML for dynamic insertion
@@ -439,8 +502,10 @@ class AuthManager {
         // Load avatar if logged in, set default if logged out
         if (isLoggedIn) {
             this.loadUserAvatar();
+            this.refreshAllXPDisplays();
         } else {
             this.setDefaultAvatar();
+            this.clearXPDisplay();
         }
 
         const logoutBtn = document.querySelector('.btn-logout');
@@ -455,6 +520,22 @@ class AuthManager {
             console.log('Logout button event attached');
         }
     }
+
+    clearXPDisplay() {
+        const xpElements = document.querySelectorAll('.xp-display, .level-display, #userLevel, #totalPoints');
+        xpElements.forEach(el => {
+            if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                el.value = '';
+            } else {
+                el.textContent = '0';
+            }
+        });
+
+        const progressBars = document.querySelectorAll('.progress-bar');
+        progressBars.forEach(bar => {
+            bar.style.width = '0%';
+        });
+    }
     
     logout() {
         localStorage.removeItem('token');
@@ -468,7 +549,9 @@ class AuthManager {
         this.showMessage('Logged out successfully', 'success');
         
         // Redirect to home if on protected page
-        if (window.location.pathname.includes('profile')) {
+        if (window.location.pathname.includes('profile') || 
+            window.location.pathname.includes('gallery') ||
+            window.location.pathname.includes('community')) {
             window.location.href = '/';
         }
     }
@@ -491,3 +574,6 @@ const auth = new AuthManager();
 console.log('Before window.auth assignment, auth exists:', !!auth);
 window.auth = auth;
 console.log('After assignment, window.auth exists:', !!window.auth);
+
+window.refreshXP = auth.refreshAllXPDisplays.bind(auth);
+window.getUserXP = auth.getUserXP.bind(auth);

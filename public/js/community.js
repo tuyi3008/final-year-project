@@ -9,6 +9,55 @@ const itemsPerPage = 8;
 let isLoading = false;
 let hasMore = true;
 
+async function joinChallenge(challengeId) {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+        if (window.auth?.showLoginModal) {
+            window.auth.showLoginModal('Please login to join the challenge');
+        }
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/challenge/join', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ challenge_id: challengeId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.code === 200) {
+            if (data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'join_challenge' }
+                }));
+
+                showXPMessage(`+${data.xp_reward} XP from joining challenge!`);
+            }
+            
+            alert(`Successfully joined the challenge! ${data.xp_reward ? '+' + data.xp_reward + ' XP' : ''}`);
+
+            const joinBtn = document.querySelector(`[data-challenge-id="${challengeId}"]`);
+            if (joinBtn) {
+                joinBtn.textContent = 'Joined';
+                joinBtn.disabled = true;
+            }
+
+            loadWeeklyChallenge();
+        } else {
+            alert(data.error || 'Failed to join challenge');
+        }
+    } catch (error) {
+        console.error('Error joining challenge:', error);
+        alert('Failed to join challenge');
+    }
+}
+
 // Load weekly challenge
 async function loadWeeklyChallenge() {
     try {
@@ -18,9 +67,37 @@ async function loadWeeklyChallenge() {
         if (data.code === 200 && data.challenge) {
             weeklyChallenge = data.challenge;
             renderWeeklyChallenge();
+            
+            // Check if user has joined
+            checkIfUserJoined();
         }
     } catch (error) {
         console.error('Error loading challenge:', error);
+    }
+}
+
+async function checkIfUserJoined() {
+    const token = localStorage.getItem('token');
+    if (!token || !weeklyChallenge) return;
+    
+    try {
+        const response = await fetch(`/api/challenge/check-joined?challenge_id=${weeklyChallenge._id}`, {
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        });
+        
+        const data = await response.json();
+        if (data.code === 200 && data.joined) {
+            // Update UI to show joined status
+            const joinBtn = document.querySelector('.btn-outline-challenge');
+            if (joinBtn) {
+                joinBtn.textContent = 'Already Joined';
+                joinBtn.disabled = true;
+            }
+        }
+    } catch (error) {
+        console.error('Error checking join status:', error);
     }
 }
 
@@ -69,7 +146,7 @@ function renderWeeklyChallenge() {
                 <i class="bi bi-info-circle"></i>
                 View Details
             </button>
-            <button class="btn-outline-challenge" onclick="showJoinChallengeModal()">
+            <button class="btn-outline-challenge" onclick="showJoinChallengeModal()" data-challenge-id="${weeklyChallenge._id}">
                 <i class="bi bi-upload"></i>
                 Submit Your Art
             </button>
@@ -448,15 +525,19 @@ function viewChallengeDetails() {
             
             <h5 class="mb-3">🏆 Prizes</h5>
             <ul class="mb-4">
-                <li>🥇 1st Place: Featured on homepage + 500 points</li>
-                <li>🥈 2nd Place: 300 points</li>
-                <li>🥉 3rd Place: 100 points</li>
+                <li>🥇 1st Place: Featured on homepage + 500 XP</li>
+                <li>🥈 2nd Place: 300 XP</li>
+                <li>🥉 3rd Place: 100 XP</li>
             </ul>
             
-            <div class="d-grid">
-                <button class="btn btn-gradient" onclick="showJoinChallengeModal()">
+            <div class="d-grid gap-2">
+                <button class="btn btn-gradient" onclick="joinChallenge('${weeklyChallenge._id}')">
+                    <i class="bi bi-person-plus me-2"></i>
+                    Join Challenge (+20 XP)
+                </button>
+                <button class="btn btn-outline-light" onclick="showJoinChallengeModal()">
                     <i class="bi bi-upload me-2"></i>
-                    Join Challenge
+                    Submit Your Art (+50 XP)
                 </button>
             </div>
         </div>
@@ -502,6 +583,22 @@ function resetJoinModal() {
     document.getElementById('upload-preview').style.display = 'none';
     document.getElementById('upload-form').style.display = 'none';
     document.getElementById('challenge-file-input').value = '';
+}
+
+function showXPMessage(message) {
+    const xpDiv = document.createElement('div');
+    xpDiv.className = 'alert alert-info alert-dismissible fade show position-fixed top-0 end-0 m-3';
+    xpDiv.style.zIndex = '9999';
+    xpDiv.innerHTML = `
+        <i class="bi bi-star-fill text-warning me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(xpDiv);
+    
+    setTimeout(() => {
+        xpDiv.remove();
+    }, 2000);
 }
 
 // Process and submit uploaded file
@@ -554,14 +651,22 @@ async function processAndSubmit() {
                 image_path: transformData.image_path,
                 style: style,
                 description: description,
-                challenge_id: weeklyChallenge?.id
+                challenge_id: weeklyChallenge?._id
             })
         });
         
         const submitData = await submitResponse.json();
         
         if (submitData.code === 200) {
-            alert('Successfully submitted to challenge!');
+            if (submitData.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: submitData.xp_reward, source: 'submit_challenge' }
+                }));
+
+                showXPMessage(`+${submitData.xp_reward} XP from challenge submission!`);
+            }
+            
+            alert(`Successfully submitted to challenge! ${submitData.xp_reward ? '+' + submitData.xp_reward + ' XP' : ''}`);
             
             const modal = bootstrap.Modal.getInstance(document.getElementById('joinChallengeModal'));
             modal.hide();
@@ -779,3 +884,5 @@ window.selectFromAlbum = selectFromAlbum;
 window.processAndSubmit = processAndSubmit;
 window.likeSubmission = likeSubmission;
 window.shareSubmission = shareSubmission;
+window.joinChallenge = joinChallenge;
+window.showXPMessage = showXPMessage;

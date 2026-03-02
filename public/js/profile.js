@@ -20,45 +20,61 @@ function loadUserProfile() {
     // Set last active
     document.getElementById('lastActive').textContent = 'Today';
     
-    // Load level and XP data
+    // Load level and XP data from database
     loadLevelData();
 }
 
 // ====================== Level System Functions ======================
 
-function loadLevelData() {
-    // Get XP from localStorage or default to 0
-    let totalXP = parseInt(localStorage.getItem('userXP') || '0');
+async function loadLevelData() {
+    const token = localStorage.getItem('token');
+    if (!token) return;
     
-    // Calculate level based on XP (simple formula: level = floor(xp/100) + 1)
-    const level = Math.floor(totalXP / 100) + 1;
-    const currentLevelXP = (level - 1) * 100;
-    const nextLevelXP = level * 100;
-    const progress = ((totalXP - currentLevelXP) / 100) * 100;
+    try {
+        const response = await fetch('http://localhost:8000/api/user/profile', {
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.code === 200) {
+            const totalXP = data.total_xp || 0;
+            
+            // Calculate level based on XP (simple formula: level = floor(xp/100) + 1)
+            const level = Math.floor(totalXP / 100) + 1;
+            const currentLevelXP = (level - 1) * 100;
+            const nextLevelXP = level * 100;
+            const progress = ((totalXP - currentLevelXP) / 100) * 100;
 
-    const userLevelEl = document.getElementById('userLevel');
-    if (userLevelEl) userLevelEl.textContent = level;
-    
-    const levelDisplayEl = document.getElementById('levelDisplay');
-    if (levelDisplayEl) levelDisplayEl.textContent = level;
-    
-    const levelValueEl = document.getElementById('levelValue');
-    if (levelValueEl) levelValueEl.textContent = level;
-    
-    const totalPointsEl = document.getElementById('totalPoints');
-    if (totalPointsEl) totalPointsEl.textContent = totalXP;
-    
-    const currentExpEl = document.getElementById('currentExp');
-    if (currentExpEl) currentExpEl.textContent = totalXP - currentLevelXP;
-    
-    const nextLevelExpEl = document.getElementById('nextLevelExp');
-    if (nextLevelExpEl) nextLevelExpEl.textContent = '100';
-    
-    const nextLevelPointsEl = document.getElementById('nextLevelPoints');
-    if (nextLevelPointsEl) nextLevelPointsEl.textContent = nextLevelXP;
-    
-    const expProgressEl = document.getElementById('expProgress');
-    if (expProgressEl) expProgressEl.style.width = progress + '%';
+            const userLevelEl = document.getElementById('userLevel');
+            if (userLevelEl) userLevelEl.textContent = level;
+            
+            const levelDisplayEl = document.getElementById('levelDisplay');
+            if (levelDisplayEl) levelDisplayEl.textContent = level;
+            
+            const levelValueEl = document.getElementById('levelValue');
+            if (levelValueEl) levelValueEl.textContent = level;
+            
+            const totalPointsEl = document.getElementById('totalPoints');
+            if (totalPointsEl) totalPointsEl.textContent = totalXP;
+            
+            const currentExpEl = document.getElementById('currentExp');
+            if (currentExpEl) currentExpEl.textContent = totalXP - currentLevelXP;
+            
+            const nextLevelExpEl = document.getElementById('nextLevelExp');
+            if (nextLevelExpEl) nextLevelExpEl.textContent = '100';
+            
+            const nextLevelPointsEl = document.getElementById('nextLevelPoints');
+            if (nextLevelPointsEl) nextLevelPointsEl.textContent = nextLevelXP;
+            
+            const expProgressEl = document.getElementById('expProgress');
+            if (expProgressEl) expProgressEl.style.width = progress + '%';
+        }
+    } catch (error) {
+        console.error('Error loading level data:', error);
+    }
 }
 
 // ====================== Stats Functions ======================
@@ -102,10 +118,7 @@ async function loadUserStats() {
             // Update progress bars based on stats
             updateProgressBars(data);
             
-            // Update XP based on stats (example calculation)
-            const xpFromStats = (data.transformCount * 5) + (data.favoriteCount * 2) + (data.shareCount * 10);
-            localStorage.setItem('userXP', xpFromStats.toString());
-            loadLevelData();
+            await loadLevelData();
             
         } else {
             console.error('Failed to load stats:', data.error);
@@ -351,9 +364,12 @@ async function toggleFavorite(imagePath, style, button) {
                 favCount.textContent = parseInt(favCount.textContent) + (isFavorite ? -1 : 1);
             }
             
-            // Update XP for getting favorites (if this was a like received)
-            if (!isFavorite) {
-                addXP(2); // +2 XP for receiving a like
+            if (!isFavorite && data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'favorite_added' }
+                }));
+
+                showXPMessage(`+${data.xp_reward} XP from adding favorite!`);
             }
             
             // Refresh favorites tab if active
@@ -371,14 +387,8 @@ async function toggleFavorite(imagePath, style, button) {
 
 // ====================== XP System Functions ======================
 
-function addXP(amount) {
-    let currentXP = parseInt(localStorage.getItem('userXP') || '0');
-    currentXP += amount;
-    localStorage.setItem('userXP', currentXP.toString());
-    loadLevelData();
-    
-    // Show XP gained notification
-    showXPMessage(`+${amount} XP`);
+async function refreshXP() {
+    await loadLevelData();
 }
 
 function showXPMessage(message) {
@@ -458,7 +468,6 @@ async function handleEditProfile(e) {
     submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
     
     try {
-
         const formData = new FormData();
         formData.append('username', username);
         formData.append('bio', bio);
@@ -485,7 +494,6 @@ async function handleEditProfile(e) {
         const data = await response.json();
         
         if (data.code === 200) {
-
             document.getElementById('profileName').textContent = username;
             localStorage.setItem('userBio', bio);
 
@@ -493,11 +501,17 @@ async function handleEditProfile(e) {
                 updateAvatarDisplay(data.avatar_path);
             }
 
+            if (data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'profile_update' }
+                }));
+                showXPMessage(`+${data.xp_reward} XP from updating profile!`);
+            }
+
             const modal = bootstrap.Modal.getInstance(document.getElementById('editProfileModal'));
             modal.hide();
             
             showSuccessMessage('Profile updated successfully!');
-            addXP(10);
         } else {
             alert(data.error || 'Failed to update profile');
         }
@@ -514,15 +528,11 @@ function previewAvatar(input) {
     if (input.files && input.files[0]) {
         const reader = new FileReader();
         reader.onload = function(e) {
-
             let preview = document.getElementById('avatarPreview');
             if (!preview) {
-
                 const avatarContainer = document.querySelector('.profile-avatar');
                 if (avatarContainer) {
-
                     const originalIcon = avatarContainer.innerHTML;
-
                     preview = document.createElement('img');
                     preview.id = 'avatarPreview';
                     preview.className = 'avatar-preview';
@@ -530,10 +540,8 @@ function previewAvatar(input) {
                     preview.style.height = '100%';
                     preview.style.borderRadius = '50%';
                     preview.style.objectFit = 'cover';
-
                     avatarContainer.innerHTML = '';
                     avatarContainer.appendChild(preview);
-
                     avatarContainer.dataset.originalIcon = originalIcon;
                 }
             }
@@ -547,7 +555,6 @@ function previewAvatar(input) {
 }
 
 function updateAvatarDisplay(avatarPath) {
-
     const avatarContainer = document.querySelector('.profile-avatar');
     if (avatarContainer) {
         let avatarImg = avatarContainer.querySelector('img');
@@ -664,7 +671,11 @@ async function handleSettingsSubmit(e) {
     }
     
     showSuccessMessage('Settings saved successfully!');
-    addXP(5); // +5 XP for updating settings
+
+    window.dispatchEvent(new CustomEvent('xpUpdated', { 
+        detail: { amount: 5, source: 'settings_update' }
+    }));
+    showXPMessage('+5 XP from updating settings!');
 }
 
 function handleLogout() {
@@ -673,7 +684,6 @@ function handleLogout() {
     } else {
         localStorage.removeItem('token');
         localStorage.removeItem('userEmail');
-        localStorage.removeItem('userXP');
         window.location.href = '/';
     }
 }
@@ -691,10 +701,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load all user data
     loadUserProfile();
-    loadUserStats();
+    loadUserStats();  // This will call loadLevelData() which gets XP from database
     loadHistory();
     loadFavorites();
     loadUserAvatar();
+
+    window.addEventListener('xpUpdated', function(event) {
+        console.log('XP updated event received:', event.detail);
+        refreshXP(); // Reload level data from database
+    });
 
     const avatarInput = document.getElementById('editAvatar');
     if (avatarInput) {
@@ -735,6 +750,6 @@ document.addEventListener('DOMContentLoaded', function() {
     setupSettingsTab();
 });
 
-// Make functions global for onclick handlers
 window.toggleFavorite = toggleFavorite;
 window.downloadImage = downloadImage;
+window.refreshXP = refreshXP;
