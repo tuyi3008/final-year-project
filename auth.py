@@ -41,6 +41,9 @@ class UserInDB(BaseModel):
     email: Optional[str] = None
     hashed_password: str
     created_at: Optional[datetime] = None
+    total_xp: Optional[int] = 0
+    bio: Optional[str] = ""
+    avatar_path: Optional[str] = None
 
 # ==================== Helper Functions ====================
 def get_users_collection():
@@ -161,13 +164,16 @@ async def register_user(user: UserCreate):
     existing_user = await get_user(user.email)
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create new user document
+
     new_user = {
         "username": user.username,
         "email": user.email,
         "hashed_password": get_password_hash(user.password),
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow(),
+        "total_xp": 0,
+        "bio": "",
+        "avatar_path": None,
+        "updated_at": datetime.utcnow()
     }
     
     # Insert into MongoDB
@@ -181,7 +187,8 @@ async def register_user(user: UserCreate):
             "msg": "Registration successful", 
             "username": user.username,
             "email": user.email,
-            "id": str(result.inserted_id)
+            "id": str(result.inserted_id),
+            "total_xp": 0
         }
     except Exception as e:
         print(f"❌ Insert failed: {e}")
@@ -200,4 +207,11 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         data={"sub": user.email},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "email": user.email,
+        "username": user.username,
+        "total_xp": user.total_xp if hasattr(user, 'total_xp') else 0
+    }

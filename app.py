@@ -125,6 +125,105 @@ async def profile():
 # Challenge API Routes
 # =============================
 
+@app.post("/api/challenge/join", summary="Join current weekly challenge")
+async def join_challenge(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Join the current weekly challenge"""
+    try:
+        data = await request.json()
+        challenge_id = data.get('challenge_id')
+        
+        if not challenge_id:
+            return JSONResponse({"code": 400, "error": "Missing challenge_id"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Check if challenge exists
+        challenge = await db.challenges.find_one({"_id": ObjectId(challenge_id)})
+        if not challenge:
+            return JSONResponse({"code": 404, "error": "Challenge not found"}, status_code=404)
+        
+        # Check if user already joined
+        existing = await db.challenge_participants.find_one({
+            "user_id": current_user.id,
+            "challenge_id": challenge_id
+        })
+        
+        if existing:
+            return JSONResponse({"code": 400, "error": "Already joined this challenge"}, status_code=400)
+        
+        # Add user to participants
+        participant = {
+            "user_id": current_user.id,
+            "user_email": current_user.email,
+            "username": current_user.username,
+            "challenge_id": challenge_id,
+            "joined_at": datetime.utcnow()
+        }
+        
+        await db.challenge_participants.insert_one(participant)
+        
+        # Update participant count
+        await db.challenges.update_one(
+            {"_id": ObjectId(challenge_id)},
+            {"$inc": {"participants": 1}}
+        )
+
+        xp_reward = 20
+        await db.user_xp.insert_one({
+            "user_id": current_user.id,
+            "amount": xp_reward,
+            "source": "join_challenge",
+            "challenge_id": challenge_id,
+            "created_at": datetime.utcnow()
+        })
+        
+        # Update user's total XP in users collection
+        await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$inc": {"total_xp": xp_reward}}
+        )
+        
+        return {
+            "code": 200,
+            "message": "Successfully joined the challenge",
+            "xp_reward": xp_reward
+        }
+        
+    except Exception as e:
+        print(f"Error joining challenge: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+@app.get("/api/challenge/check-joined", summary="Check if user joined challenge")
+async def check_challenge_joined(
+    challenge_id: str,
+    current_user: UserInDB = Depends(get_current_user)
+):
+    """Check if the current user has joined a specific challenge"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Check if user is in participants
+        participant = await db.challenge_participants.find_one({
+            "user_id": current_user.id,
+            "challenge_id": challenge_id
+        })
+        
+        return {
+            "code": 200,
+            "joined": participant is not None
+        }
+        
+    except Exception as e:
+        print(f"Error checking join status: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
 @app.get("/api/challenge/current", summary="Get current weekly challenge")
 async def get_current_challenge():
     """Get the current active weekly challenge"""
@@ -231,11 +330,28 @@ async def submit_to_challenge(
             {"_id": ObjectId(challenge_id)},
             {"$inc": {"submissions": 1, "participants": 1}}
         )
+
+        xp_reward = 50
+        await db.user_xp.insert_one({
+            "user_id": current_user.id,
+            "amount": xp_reward,
+            "source": "submit_challenge",
+            "challenge_id": challenge_id,
+            "submission_id": str(result.inserted_id),
+            "created_at": datetime.utcnow()
+        })
+        
+        # Update user's total XP in users collection
+        await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$inc": {"total_xp": xp_reward}}
+        )
         
         return {
             "code": 200,
             "message": "Successfully submitted to challenge",
-            "submission_id": str(result.inserted_id)
+            "submission_id": str(result.inserted_id),
+            "xp_reward": xp_reward
         }
         
     except Exception as e:
@@ -337,6 +453,21 @@ async def like_submission(
                     {"_id": ObjectId(submission_id)},
                     {"$inc": {"likes": 1}}
                 )
+
+                if str(submission.get('user_id')) != current_user.id:
+                    await db.users.update_one(
+                        {"_id": ObjectId(submission['user_id'])},
+                        {"$inc": {"total_xp": 2}}
+                    )
+                    
+                    await db.user_xp.insert_one({
+                        "user_id": submission['user_id'],
+                        "amount": 2,
+                        "source": "like_received",
+                        "submission_id": submission_id,
+                        "created_at": datetime.utcnow()
+                    })
+                
                 return {"code": 200, "message": "Liked", "liked": True}
         else:
             # Anonymous like - just increment counter
@@ -489,11 +620,26 @@ async def publish_to_gallery(
         }
         
         result = await db.gallery.insert_one(gallery_record)
+
+        xp_reward = 15
+        await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$inc": {"total_xp": xp_reward}}
+        )
+        
+        await db.user_xp.insert_one({
+            "user_id": current_user.id,
+            "amount": xp_reward,
+            "source": "publish_gallery",
+            "gallery_id": str(result.inserted_id),
+            "created_at": datetime.utcnow()
+        })
         
         return {
             "code": 200,
             "message": "Published to gallery successfully",
-            "gallery_id": str(result.inserted_id)
+            "gallery_id": str(result.inserted_id),
+            "xp_reward": xp_reward
         }
         
     except Exception as e:
@@ -533,6 +679,7 @@ async def stylize(
         b64 = tensor_to_base64(output, model_type="unet" if style == "sketch" else "stylization")
         
         # ========== Save to history ONLY for authenticated users ==========
+        xp_reward = 0
         if current_user:
             try:
                 # Generate unique identifiers for files
@@ -575,9 +722,20 @@ async def stylize(
                 # Insert into MongoDB history collection
                 await db.history.insert_one(history_record)
                 print(f"✅ History saved for authenticated user: {current_user.email}")
+
+                xp_reward = 5
+                await db.users.update_one(
+                    {"_id": ObjectId(current_user.id)},
+                    {"$inc": {"total_xp": xp_reward}}
+                )
                 
-                # Save last transform to localStorage equivalent (for session)
-                # This will be handled by frontend
+                await db.user_xp.insert_one({
+                    "user_id": current_user.id,
+                    "amount": xp_reward,
+                    "source": "image_transform",
+                    "style": style,
+                    "created_at": datetime.utcnow()
+                })
                 
             except Exception as e:
                 # Non-critical error - don't fail the request, just log it
@@ -588,7 +746,10 @@ async def stylize(
         # ================================================================
 
         # Return transformed image to client
-        return {"image_base64": b64}
+        return {
+            "image_base64": b64,
+            "xp_reward": xp_reward if current_user else 0
+        }
 
     except Exception as e:
         # Log error and return 500 response
@@ -644,11 +805,26 @@ async def add_to_favorites(
         }
         
         result = await db.favorites.insert_one(favorite_record)
+
+        xp_reward = 3
+        await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$inc": {"total_xp": xp_reward}}
+        )
+        
+        await db.user_xp.insert_one({
+            "user_id": current_user.id,
+            "amount": xp_reward,
+            "source": "add_favorite",
+            "favorite_id": str(result.inserted_id),
+            "created_at": datetime.utcnow()
+        })
         
         return {
             "code": 200,
             "message": "Added to favorites",
-            "favorite_id": str(result.inserted_id)
+            "favorite_id": str(result.inserted_id),
+            "xp_reward": xp_reward
         }
         
     except Exception as e:
@@ -848,11 +1024,26 @@ async def create_album(
         }
         
         result = await db.albums.insert_one(album)
+
+        xp_reward = 10
+        await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$inc": {"total_xp": xp_reward}}
+        )
+        
+        await db.user_xp.insert_one({
+            "user_id": current_user.id,
+            "amount": xp_reward,
+            "source": "create_album",
+            "album_id": str(result.inserted_id),
+            "created_at": datetime.utcnow()
+        })
         
         return {
             "code": 200,
             "message": "Album created successfully",
-            "album_id": str(result.inserted_id)
+            "album_id": str(result.inserted_id),
+            "xp_reward": xp_reward
         }
         
     except Exception as e:
@@ -950,6 +1141,7 @@ async def upload_images_to_album(
             return JSONResponse({"code": 404, "error": "Album not found"}, status_code=404)
         
         uploaded_photos = []
+        total_xp = 0
         
         for file in files:
             # Generate unique filename
@@ -980,17 +1172,34 @@ async def upload_images_to_album(
             photo["_id"] = str(result.inserted_id)
             photo["id"] = photo["_id"]
             uploaded_photos.append(photo)
+            total_xp += 2
         
         # Update album's updated_at
         await db.albums.update_one(
             {"_id": ObjectId(album_id)},
             {"$set": {"updated_at": datetime.utcnow()}}
         )
+
+        if total_xp > 0:
+            await db.users.update_one(
+                {"_id": ObjectId(current_user.id)},
+                {"$inc": {"total_xp": total_xp}}
+            )
+            
+            await db.user_xp.insert_one({
+                "user_id": current_user.id,
+                "amount": total_xp,
+                "source": "upload_photos",
+                "album_id": album_id,
+                "photo_count": len(uploaded_photos),
+                "created_at": datetime.utcnow()
+            })
         
         return {
             "code": 200,
             "message": f"Successfully uploaded {len(uploaded_photos)} images",
-            "photos": uploaded_photos
+            "photos": uploaded_photos,
+            "xp_reward": total_xp
         }
         
     except Exception as e:
@@ -1003,7 +1212,7 @@ async def upload_images_to_album(
 
 @app.get("/api/user/stats", summary="Get user statistics")
 async def get_user_stats(current_user: UserInDB = Depends(get_current_user_strict)):
-    """Get user statistics: transform count, favorite count, share count"""
+    """Get user statistics: transform count, favorite count, share count, total XP"""
     try:
         db = get_db()
         if db is None:
@@ -1018,11 +1227,16 @@ async def get_user_stats(current_user: UserInDB = Depends(get_current_user_stric
         # Get share count (published to gallery)
         share_count = await db.gallery.count_documents({"user_id": current_user.id})
         
+        # Get total XP from users collection
+        user = await db.users.find_one({"_id": ObjectId(current_user.id)})
+        total_xp = user.get("total_xp", 0) if user else 0
+        
         return {
             "code": 200,
             "transformCount": transform_count,
             "favoriteCount": favorite_count,
-            "shareCount": share_count
+            "shareCount": share_count,
+            "totalXP": total_xp
         }
         
     except Exception as e:
@@ -1076,6 +1290,22 @@ async def like_gallery_image(
                     {"_id": ObjectId(image_id)},
                     {"$inc": {"likes": 1}}
                 )
+                
+                # ========== 新增：给作品作者加 XP ==========
+                if str(image.get('user_id')) != current_user.id:
+                    await db.users.update_one(
+                        {"_id": ObjectId(image['user_id'])},
+                        {"$inc": {"total_xp": 2}}
+                    )
+                    
+                    await db.user_xp.insert_one({
+                        "user_id": image['user_id'],
+                        "amount": 2,
+                        "source": "gallery_like_received",
+                        "image_id": image_id,
+                        "created_at": datetime.utcnow()
+                    })
+                
                 return {"code": 200, "message": "Liked", "liked": True}
         else:
             # Anonymous like - just increment counter
@@ -1140,6 +1370,28 @@ async def update_user_profile(
                 {"_id": ObjectId(current_user.id)},
                 {"$set": update_data}
             )
+            
+            # ========== 新增：更新资料获得 XP ==========
+            xp_reward = 5
+            await db.users.update_one(
+                {"_id": ObjectId(current_user.id)},
+                {"$inc": {"total_xp": xp_reward}}
+            )
+            
+            await db.user_xp.insert_one({
+                "user_id": current_user.id,
+                "amount": xp_reward,
+                "source": "update_profile",
+                "created_at": datetime.utcnow()
+            })
+            
+            return {
+                "code": 200,
+                "message": "Profile updated successfully",
+                "username": username or current_user.username,
+                "bio": bio or "",
+                "xp_reward": xp_reward
+            }
         
         return {
             "code": 200,
@@ -1170,7 +1422,8 @@ async def get_user_profile(current_user: UserInDB = Depends(get_current_user_str
             "email": user.get("email"),
             "bio": user.get("bio", ""),
             "avatar_path": user.get("avatar_path"),
-            "created_at": user.get("created_at")
+            "created_at": user.get("created_at"),
+            "total_xp": user.get("total_xp", 0)
         }
         
     except Exception as e:
