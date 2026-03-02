@@ -10,6 +10,13 @@ let currentAlbum = null;
 let selectedPhotos = [];
 let isSelectionMode = false;
 
+const STYLE_OPTIONS = [
+    { value: 'original', label: 'Original' },
+    { value: 'sketch', label: 'Sketch' },
+    { value: 'anime', label: 'Anime' },
+    { value: 'ink', label: 'Ink Wash' }
+];
+
 async function initializePage() {
     console.log('🔄 Initializing page...');
     const isAuthenticated = await checkAuth();
@@ -388,6 +395,8 @@ function createPhotoCard(photo) {
     card.dataset.photoId = photo.id;
     
     const uploadDate = new Date(photo.uploaded_at).toLocaleDateString();
+    const style = photo.style || 'original';
+    const styleLabel = STYLE_OPTIONS.find(s => s.value === style)?.label || style;
     
     card.innerHTML = `
         ${isSelectionMode ? 
@@ -399,7 +408,7 @@ function createPhotoCard(photo) {
             <div class="photo-filename">${photo.filename}</div>
             <div class="photo-meta">
                 <span><i class="bi bi-calendar3"></i> ${uploadDate}</span>
-                <span class="photo-style">${photo.style || 'Original'}</span>
+                <span class="photo-style" data-style="${style}">${styleLabel}</span>
             </div>
         </div>
     `;
@@ -429,13 +438,112 @@ function openPhotoDetail(photo) {
     document.getElementById('detail-photo-filename').textContent = photo.filename;
     document.getElementById('detail-photo-date').textContent = new Date(photo.uploaded_at).toLocaleString();
     document.getElementById('detail-photo-size').textContent = formatFileSize(photo.file_size);
-    document.getElementById('detail-photo-style').textContent = photo.style || 'Original';
+
+    const styleSelect = document.getElementById('detail-photo-style');
+    if (styleSelect) {
+        styleSelect.innerHTML = '';
+
+        STYLE_OPTIONS.forEach(option => {
+            const optionEl = document.createElement('option');
+            optionEl.value = option.value;
+            optionEl.textContent = option.label;
+            if (option.value === (photo.style || 'original')) {
+                optionEl.selected = true;
+            }
+            styleSelect.appendChild(optionEl);
+        });
+
+        styleSelect.removeEventListener('change', handleStyleChange);
+        styleSelect.addEventListener('change', handleStyleChange);
+    }
     
     document.getElementById('detail-photo-image').dataset.photoId = photo.id;
     document.getElementById('detail-photo-image').dataset.photoPath = photo.image_path;
     
     const modal = new bootstrap.Modal(document.getElementById('photoDetailModal'));
     modal.show();
+}
+
+async function handleStyleChange(event) {
+    const newStyle = event.target.value;
+    const photoId = document.getElementById('detail-photo-image').dataset.photoId;
+    const token = localStorage.getItem('token');
+    
+    if (!photoId || !token) return;
+
+    const styleSelect = event.target;
+    styleSelect.disabled = true;
+    
+    try {
+        const response = await fetch(`http://localhost:8000/api/photos/${photoId}/style`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ style: newStyle })
+        });
+        
+        if (response.status === 401) {
+            console.log('⚠️ Token invalid');
+            localStorage.removeItem('token');
+            if (window.auth?.showLoginModal) {
+                window.auth.showLoginModal();
+            }
+            return;
+        }
+        
+        const data = await response.json();
+        
+        if (data.code === 200) {
+            showSuccessMessage('Style updated successfully!');
+
+            if (currentAlbum && currentAlbum.photos) {
+                const photo = currentAlbum.photos.find(p => p.id === photoId);
+                if (photo) {
+                    photo.style = newStyle;
+                }
+            }
+
+            if (data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'update_style' }
+                }));
+                showXPMessage(`+${data.xp_reward} XP from updating style!`);
+            }
+        } else {
+            alert(data.error || 'Failed to update style');
+            const photo = currentAlbum?.photos?.find(p => p.id === photoId);
+            if (photo) {
+                styleSelect.value = photo.style || 'original';
+            }
+        }
+    } catch (error) {
+        console.error('Error updating style:', error);
+        alert('Failed to update style');
+        const photo = currentAlbum?.photos?.find(p => p.id === photoId);
+        if (photo) {
+            styleSelect.value = photo.style || 'original';
+        }
+    } finally {
+        styleSelect.disabled = false;
+    }
+}
+
+function showXPMessage(message) {
+    const xpDiv = document.createElement('div');
+    xpDiv.className = 'alert alert-info alert-dismissible fade show position-fixed top-0 end-0 m-3';
+    xpDiv.style.zIndex = '9999';
+    xpDiv.innerHTML = `
+        <i class="bi bi-star-fill text-warning me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(xpDiv);
+    
+    setTimeout(() => {
+        xpDiv.remove();
+    }, 2000);
 }
 
 function togglePhotoSelection(photoId, selected) {
@@ -578,6 +686,10 @@ async function submitSelectedToChallenge() {
 }
 
 function showChallengeSubmitModal(photo, challenge) {
+    const styleOptionsHtml = STYLE_OPTIONS.map(option => 
+        `<option value="${option.value}" ${option.value === (photo.style || 'original') ? 'selected' : ''}>${option.label}</option>`
+    ).join('');
+    
     const modalHtml = `
         <div class="modal fade" id="challengeSubmitModal" tabindex="-1">
             <div class="modal-dialog modal-dialog-centered">
@@ -601,7 +713,9 @@ function showChallengeSubmitModal(photo, challenge) {
                         
                         <div class="mb-3">
                             <label class="form-label">Style</label>
-                            <input type="text" class="form-control" value="${photo.style || 'Original'}" readonly>
+                            <select class="form-control" id="challenge-style">
+                                ${styleOptionsHtml}
+                            </select>
                         </div>
                         
                         <div class="mb-3">
@@ -610,7 +724,7 @@ function showChallengeSubmitModal(photo, challenge) {
                         </div>
                         
                         <div class="d-grid gap-2">
-                            <button class="btn btn-gradient" onclick="confirmChallengeSubmit('${photo.id}', '${photo.image_path}', '${photo.style || 'Original'}')">
+                            <button class="btn btn-gradient" onclick="confirmChallengeSubmit('${photo.id}', '${photo.image_path}')">
                                 <i class="bi bi-cloud-upload me-2"></i>
                                 Submit to Challenge
                             </button>
@@ -633,12 +747,13 @@ function showChallengeSubmitModal(photo, challenge) {
 function showPhotoSelectionModal(photos, challenge) {
     let photosHtml = '';
     photos.forEach(photo => {
+        const styleLabel = STYLE_OPTIONS.find(s => s.value === (photo.style || 'original'))?.label || 'Original';
         photosHtml += `
             <div class="col-6 mb-2">
-                <div class="card bg-dark border-primary photo-select-card" onclick="selectPhotoForChallenge('${photo.id}', '${photo.image_path}', '${photo.style || 'Original'}')">
+                <div class="card bg-dark border-primary photo-select-card" onclick="selectPhotoForChallenge('${photo.id}', '${photo.image_path}', '${photo.style || 'original'}')">
                     <img src="${photo.image_path}" class="card-img-top" style="aspect-ratio: 1; object-fit: cover;">
                     <div class="card-body p-2 text-center">
-                        <small>${photo.style || 'Original'}</small>
+                        <small>${styleLabel}</small>
                     </div>
                 </div>
             </div>
@@ -687,7 +802,8 @@ function selectPhotoForChallenge(photoId, imagePath, style) {
     }
 }
 
-async function confirmChallengeSubmit(photoId, imagePath, style) {
+async function confirmChallengeSubmit(photoId, imagePath) {
+    const style = document.getElementById('challenge-style').value;
     const description = document.getElementById('challenge-description').value;
     const token = localStorage.getItem('token');
     const pendingChallenge = sessionStorage.getItem('pendingChallenge');
@@ -739,12 +855,22 @@ async function confirmChallengeSubmit(photoId, imagePath, style) {
             urlParams.delete('select');
             const newUrl = window.location.pathname;
             window.history.replaceState({}, '', newUrl);
+
+            if (data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'challenge_submission' }
+                }));
+                showXPMessage(`+${data.xp_reward} XP from challenge submission!`);
+            }
         } else {
             alert(data.error || 'Failed to submit');
         }
     } catch (error) {
         console.error('Error:', error);
         alert('Failed to submit. Please try again.');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-cloud-upload me-2"></i>Submit to Challenge';
     }
 }
 
@@ -804,6 +930,13 @@ async function createAlbum(e) {
             loadAlbums();
             document.getElementById('create-album-form').reset();
             showSuccessMessage('Album created successfully!');
+
+            if (data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'create_album' }
+                }));
+                showXPMessage(`+${data.xp_reward} XP from creating album!`);
+            }
         } else {
             alert(data.error || 'Failed to create album');
         }
@@ -832,12 +965,15 @@ async function uploadImages(e) {
     
     const files = document.getElementById('image-files').files;
     if (files.length === 0) return;
+
+    const style = document.getElementById('upload-style')?.value || 'original';
     
     const formData = new FormData();
     for (let i = 0; i < files.length; i++) {
         formData.append('images', files[i]);
     }
     formData.append('album_id', currentAlbum.id);
+    formData.append('style', style);
     
     const submitBtn = document.getElementById('upload-images-submit');
     submitBtn.disabled = true;
@@ -871,6 +1007,13 @@ async function uploadImages(e) {
             document.getElementById('upload-images-form').reset();
             document.getElementById('image-preview-container').innerHTML = '';
             showSuccessMessage('Images uploaded successfully!');
+
+            if (data.xp_reward) {
+                window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                    detail: { amount: data.xp_reward, source: 'upload_photos' }
+                }));
+                showXPMessage(`+${data.xp_reward} XP from uploading photos!`);
+            }
         } else {
             alert(data.error || 'Failed to upload images');
         }
