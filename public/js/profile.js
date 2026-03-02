@@ -547,12 +547,11 @@ function previewAvatar(input) {
 }
 
 function updateAvatarDisplay(avatarPath) {
+
     const avatarContainer = document.querySelector('.profile-avatar');
     if (avatarContainer) {
-
         let avatarImg = avatarContainer.querySelector('img');
         if (!avatarImg) {
-
             avatarImg = document.createElement('img');
             avatarImg.className = 'avatar-preview';
             avatarImg.style.width = '100%';
@@ -563,6 +562,15 @@ function updateAvatarDisplay(avatarPath) {
             avatarContainer.appendChild(avatarImg);
         }
         avatarImg.src = `/${avatarPath}`;
+    }
+
+    updateNavbarAvatar(avatarPath);
+}
+
+function updateNavbarAvatar(avatarPath) {
+    const navbarAvatar = document.querySelector('.user-icon img');
+    if (navbarAvatar) {
+        navbarAvatar.src = `/${avatarPath}`;
     }
 }
 

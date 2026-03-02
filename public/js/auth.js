@@ -33,6 +33,15 @@ class AuthManager {
         
         // Update UI based on login status
         this.updateUI();
+        
+        // Load user avatar
+        this.loadUserAvatar();
+        
+        // Listen for avatar update events
+        window.addEventListener('avatarUpdated', (event) => {
+            const { avatarPath } = event.detail;
+            this.updateAvatarDisplay(avatarPath);
+        });
     }
     
     bindLoginButtons() {
@@ -135,60 +144,62 @@ class AuthManager {
         }
     }
     
-async handleLogin(e) {
-    e.preventDefault();
-    console.log('Login form submitted');
-    
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    
-    if (!email || !password) {
-        this.showMessage('Please enter email and password', 'error');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
-        });
+    async handleLogin(e) {
+        e.preventDefault();
+        console.log('Login form submitted');
         
-        const data = await response.json();
-        console.log('Login response:', data);
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
         
-        if (response.ok && data.access_token) {
-            // Save token
-            localStorage.setItem('token', data.access_token);
-            localStorage.setItem('token_type', data.token_type);
-            localStorage.setItem('userEmail', email);
-            
-            this.showMessage('Login successful!', 'success');
-            
-            document.dispatchEvent(new CustomEvent('userLoggedIn', { 
-                detail: { email: email } 
-            }));
-            
-            // Close modal after 1 second
-            setTimeout(() => {
-                const modalElement = document.getElementById('authModal');
-                if (modalElement) {
-                    const modal = bootstrap.Modal.getInstance(modalElement);
-                    if (modal) modal.hide();
-                }
-                this.updateUI();
-            }, 1000);
-            
-        } else {
-            this.showMessage(data.detail || 'Login failed', 'error');
+        if (!email || !password) {
+            this.showMessage('Please enter email and password', 'error');
+            return;
         }
-    } catch (error) {
-        console.error('Login error:', error);
-        this.showMessage('Network error. Please try again.', 'error');
+        
+        try {
+            const response = await fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+            });
+            
+            const data = await response.json();
+            console.log('Login response:', data);
+            
+            if (response.ok && data.access_token) {
+                // Save token
+                localStorage.setItem('token', data.access_token);
+                localStorage.setItem('token_type', data.token_type);
+                localStorage.setItem('userEmail', email);
+                
+                this.showMessage('Login successful!', 'success');
+                
+                document.dispatchEvent(new CustomEvent('userLoggedIn', { 
+                    detail: { email: email } 
+                }));
+                
+                // Close modal after 1 second
+                setTimeout(() => {
+                    const modalElement = document.getElementById('authModal');
+                    if (modalElement) {
+                        const modal = bootstrap.Modal.getInstance(modalElement);
+                        if (modal) modal.hide();
+                    }
+                    this.updateUI();
+                    // Load avatar after successful login
+                    this.loadUserAvatar();
+                }, 1000);
+                
+            } else {
+                this.showMessage(data.detail || 'Login failed', 'error');
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            this.showMessage('Network error. Please try again.', 'error');
+        }
     }
-}
     
     async handleRegister(e) {
         e.preventDefault();
@@ -310,6 +321,94 @@ async handleLogin(e) {
         }, 3000);
     }
     
+    // ====================== Avatar Functions ======================
+    
+    // Load user avatar from server
+    async loadUserAvatar() {
+        if (!this.isLoggedIn()) return;
+        
+        console.log('Loading user avatar...');
+        
+        try {
+            const response = await fetch('http://localhost:8000/api/user/profile', {
+                headers: this.getAuthHeaders()
+            });
+            
+            const data = await response.json();
+            
+            if (response.status === 401) {
+                console.log('Token expired, logging out...');
+                this.logout();
+                return;
+            }
+            
+            if (data.code === 200 && data.avatar_path) {
+                this.updateAvatarDisplay(data.avatar_path);
+            } else {
+                // Set default avatar if no avatar found
+                this.setDefaultAvatar();
+            }
+        } catch (error) {
+            console.error('Error loading avatar:', error);
+            this.setDefaultAvatar();
+        }
+    }
+    
+    // Update avatar display across all pages
+    updateAvatarDisplay(avatarPath) {
+        console.log('Updating avatar display:', avatarPath);
+        
+        // Update navbar user menu avatar
+        const navbarAvatar = document.querySelector('.user-icon img');
+        if (navbarAvatar) {
+            navbarAvatar.src = `/${avatarPath}`;
+            navbarAvatar.onerror = () => this.setDefaultAvatar();
+        }
+        
+        // Update profile page avatar if it exists
+        const profileAvatar = document.querySelector('.profile-avatar img');
+        if (profileAvatar) {
+            profileAvatar.src = `/${avatarPath}`;
+            profileAvatar.onerror = () => this.setDefaultAvatar();
+        }
+        
+        // Update any other avatar elements with class 'user-avatar'
+        const userAvatars = document.querySelectorAll('.user-avatar');
+        userAvatars.forEach(img => {
+            img.src = `/${avatarPath}`;
+            img.onerror = () => this.setDefaultAvatar();
+        });
+        
+        // Trigger event for other components
+        window.dispatchEvent(new CustomEvent('avatarUpdated', { 
+            detail: { avatarPath: avatarPath } 
+        }));
+    }
+    
+    // Set default avatar (Bootstrap person icon as SVG)
+    setDefaultAvatar() {
+        const defaultSvg = 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22%236c757d%22%20d%3D%22M8%208a3%203%200%201%200%200-6%203%203%200%200%200%200%206zm2-3a2%202%200%201%201-4%200%202%202%200%200%201%204%200zm4%208c0%201-1%201-1%201H3s-1%200-1-1%201-4%206-4%206%203%206%204zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516%2010.68%2010.289%2010%208%2010c-2.29%200-3.516.68-4.168%201.332-.678.678-.83%201.418-.832%201.664h10z%22%2F%3E%3C%2Fsvg%3E';
+        
+        const navbarAvatar = document.querySelector('.user-icon img');
+        if (navbarAvatar && navbarAvatar.src !== defaultSvg) {
+            navbarAvatar.src = defaultSvg;
+        }
+    }
+    
+    // Get avatar HTML for dynamic insertion
+    getAvatarHTML(size = 40) {
+        const token = localStorage.getItem('token');
+        if (!token) return '';
+        
+        return `<img src="/static/images/default-avatar.png" 
+                     alt="User Avatar" 
+                     class="rounded-circle user-avatar"
+                     style="width: ${size}px; height: ${size}px; object-fit: cover;"
+                     onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22${size}%22%20height%3D%22${size}%22%20viewBox%3D%220%200%2016%2016%22%3E%3Cpath%20fill%3D%22%236c757d%22%20d%3D%22M8%208a3%203%200%201%200%200-6%203%203%200%200%200%200%206zm2-3a2%202%200%201%201-4%200%202%202%200%200%201%204%200zm4%208c0%201-1%201-1%201H3s-1%200-1-1%201-4%206-4%206%203%206%204zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516%2010.68%2010.289%2010%208%2010c-2.29%200-3.516.68-4.168%201.332-.678.678-.83%201.418-.832%201.664h10z%22%2F%3E%3C%2Fsvg%3E';">`;
+    }
+    
+    // ====================== Existing Functions ======================
+    
     isLoggedIn() {
         return !!localStorage.getItem('token');
     }
@@ -337,11 +436,12 @@ async handleLogin(e) {
             el.style.display = isLoggedIn ? 'inline-block' : 'none';
         });
         
-        // Show username if element exists
-        // const usernameSpan = document.getElementById('currentUsername');
-        // if (usernameSpan && isLoggedIn) {
-        //     usernameSpan.textContent = localStorage.getItem('userEmail') || 'User';
-        // }
+        // Load avatar if logged in, set default if logged out
+        if (isLoggedIn) {
+            this.loadUserAvatar();
+        } else {
+            this.setDefaultAvatar();
+        }
 
         const logoutBtn = document.querySelector('.btn-logout');
         if (logoutBtn) {
@@ -364,6 +464,7 @@ async handleLogin(e) {
         document.dispatchEvent(new CustomEvent('userLoggedOut'));
         
         this.updateUI();
+        this.setDefaultAvatar(); // Reset to default avatar
         this.showMessage('Logged out successfully', 'success');
         
         // Redirect to home if on protected page
@@ -387,8 +488,6 @@ console.log('Creating AuthManager instance');
 const auth = new AuthManager();
 
 // Make auth available globally
-window.auth = auth;
-
 console.log('Before window.auth assignment, auth exists:', !!auth);
 window.auth = auth;
 console.log('After assignment, window.auth exists:', !!window.auth);
