@@ -147,7 +147,8 @@
                 </h3>
                 <p class="text-muted">Select a style to transform your image</p>
             </div>
-            
+
+            <h5 class="mb-3">Classic Styles</h5>
             <div class="style-grid">
                 <div class="style-card" data-style="sketch">
                     <div class="style-icon-wrapper">
@@ -182,11 +183,51 @@
                     </span>
                 </div>
             </div>
+
+            <!-- New 3 AnimeGAN Styles -->
+            <h5 class="mb-3">Anime Styles</h5>
+            <div class="style-grid">
+                <div class="style-card" data-style="hayao">
+                    <div class="style-icon-wrapper">
+                        <i class="bi bi-brush style-icon"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">Hayao</h5>
+                    <p class="text-muted small mb-0">Miyazaki / Studio Ghibli style</p>
+                    <span class="style-badge">
+                        <i class="bi bi-check me-1"></i> Selected
+                    </span>
+                </div>
+                
+                <div class="style-card" data-style="shinkai">
+                    <div class="style-icon-wrapper">
+                        <i class="bi bi-sun style-icon"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">Shinkai</h5>
+                    <p class="text-muted small mb-0">Your Name / Weathering With You style</p>
+                    <span class="style-badge">
+                        <i class="bi bi-check me-1"></i> Selected
+                    </span>
+                </div>
+                
+                <div class="style-card" data-style="paprika">
+                    <div class="style-icon-wrapper">
+                        <i class="bi bi-moon-stars style-icon"></i>
+                    </div>
+                    <h5 class="fw-bold mb-2">Paprika</h5>
+                    <p class="text-muted small mb-0">Dreamy / Satoshi Kon style</p>
+                    <span class="style-badge">
+                        <i class="bi bi-check me-1"></i> Selected
+                    </span>
+                </div>
+            </div>
             
             <select id="style-select" class="form-select d-none">
                 <option value="sketch">Pencil Sketch</option>
                 <option value="anime">Anime Art</option>
                 <option value="ink">Ink Wash Painting</option>
+                <option value="hayao">Hayao (Miyazaki Style)</option>
+                <option value="shinkai">Shinkai (Your Name Style)</option>
+                <option value="paprika">Paprika (Dreamy Style)</option>
             </select>
         </div>
         

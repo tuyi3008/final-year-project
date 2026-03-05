@@ -659,8 +659,9 @@ async def stylize(
 ):
     try:
         # Validate style
-        if style not in models:
-            return JSONResponse({"error": "Invalid style"}, status_code=400)
+        valid_styles = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika"]
+        if style not in valid_styles:
+            return JSONResponse({"error": f"Invalid style. Choose from: {valid_styles}"}, status_code=400)
 
         # Read original image bytes for potential saving
         original_bytes = await content.read()
@@ -676,7 +677,10 @@ async def stylize(
         print(f"Output range for {style}: min={output.min():.3f}, max={output.max():.3f}, mean={output.mean():.3f}")
 
         # Convert tensor to base64 string
-        b64 = tensor_to_base64(output, model_type="unet" if style == "sketch" else "stylization")
+        if style == "sketch":
+            b64 = tensor_to_base64(output, model_type="unet")
+        else:
+            b64 = tensor_to_base64(output, model_type="stylization")
         
         # ========== Save to history ONLY for authenticated users ==========
         xp_reward = 0
@@ -1370,8 +1374,7 @@ async def update_user_profile(
                 {"_id": ObjectId(current_user.id)},
                 {"$set": update_data}
             )
-            
-            # ========== 新增：更新资料获得 XP ==========
+
             xp_reward = 5
             await db.users.update_one(
                 {"_id": ObjectId(current_user.id)},
@@ -1638,12 +1641,13 @@ class TransformerNet(torch.nn.Module):
         return y
 
 # =============================
-# Load models (with U-Net support for sketch)
+# Load all 6 models (3 original + 3 anime)
 # =============================
-STYLE_NAMES = ["sketch", "anime", "ink"]
+STYLE_NAMES = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika"]
 models: Dict[str, torch.nn.Module] = {}
 
 print("Loading PyTorch style models...")
+print("=" * 50)
 
 def filter_state_dict(state_dict):
     """Remove running_mean and running_var keys from state_dict"""
@@ -1674,6 +1678,34 @@ def load_unet_model(model_path):
     model.load_state_dict(state_dict)
     return model
 
+def load_animegan_model(model_path):
+    """Load AnimeGANv2 model (Hayao, Shinkai, Paprika)"""
+    from model import Generator  # Import the AnimeGAN generator from your model.py
+    
+    model = Generator()
+    
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location="cpu")
+    
+    # Handle different checkpoint formats
+    if isinstance(checkpoint, dict):
+        if 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint
+    else:
+        state_dict = checkpoint
+    
+    # Remove 'module.' prefix if present
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k.replace('module.', '')
+        new_state_dict[name] = v
+    
+    model.load_state_dict(new_state_dict)
+    return model
+
 for name in STYLE_NAMES:
     model_path = f"models/{name}.pt"
     
@@ -1681,22 +1713,29 @@ for name in STYLE_NAMES:
         print(f"⚠️ Model file not found: {model_path}, using random weights")
         if name == "sketch":
             model = UNet()  # Use U-Net for sketch even if no weights
+        elif name in ["hayao", "shinkai", "paprika"]:
+            from model import Generator
+            model = Generator()  # Use AnimeGAN for hayao/shinkai/paprika
         else:
             model = TransformerNet()  # Use TransformerNet for others
     else:
         try:
             if name == "sketch":
-                # Try to load as U-Net first (your trained model)
+                # Load as U-Net
+                model = load_unet_model(model_path)
+                print(f"✅ Loaded U-Net model: {name}")
+            elif name in ["hayao", "shinkai", "paprika"]:
+                # Load as AnimeGAN
                 try:
-                    model = load_unet_model(model_path)
-                    print(f"✅ Loaded U-Net model: {name}")
+                    model = load_animegan_model(model_path)
+                    print(f"✅ Loaded AnimeGAN model: {name}")
                 except Exception as e:
-                    print(f"⚠️ Failed to load as U-Net, trying TransformerNet: {e}")
+                    print(f"⚠️ Failed to load as AnimeGAN, trying TransformerNet: {e}")
                     # If fails, try as TransformerNet
                     model = TransformerNet()
                     state_dict = torch.load(model_path, map_location="cpu")
                     model.load_state_dict(state_dict, strict=False)
-                    print(f"✅ Loaded TransformerNet model: {name} (with filtered state_dict)")
+                    print(f"✅ Loaded TransformerNet model: {name}")
             else:
                 # Load as TransformerNet for anime and ink
                 model = TransformerNet()
@@ -1717,6 +1756,9 @@ for name in STYLE_NAMES:
             # Fallback to untrained model
             if name == "sketch":
                 model = UNet()
+            elif name in ["hayao", "shinkai", "paprika"]:
+                from model import Generator
+                model = Generator()
             else:
                 model = TransformerNet()
             print(f"Using untrained demo model for: {name}")
@@ -1724,7 +1766,8 @@ for name in STYLE_NAMES:
     model.eval()
     models[name] = model
 
+print("=" * 50)
 print("\n✅ All models ready!")
-print(f"   sketch model type: {type(models['sketch']).__name__}")
-print(f"   anime model type: {type(models['anime']).__name__}")
-print(f"   ink model type: {type(models['ink']).__name__}")
+print(f"   Loaded {len(models)} models: {list(models.keys())}")
+for name, model in models.items():
+    print(f"   - {name}: {type(model).__name__}")
