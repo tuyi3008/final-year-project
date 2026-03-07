@@ -25,6 +25,7 @@ styles/
 saved_model/
 tfjs_model/
 tfjs_saved_model_for_node/
+models/
 
 # IDE
 .vscode/
@@ -32,6 +33,9 @@ tfjs_saved_model_for_node/
 
 # Docker data
 docker-data/
+
+
+main.py
 
 
 
