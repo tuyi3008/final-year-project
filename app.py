@@ -55,6 +55,9 @@ os.makedirs("uploads/originals", exist_ok=True)
 os.makedirs("uploads/transformed", exist_ok=True)
 os.makedirs("uploads/gallery", exist_ok=True)
 os.makedirs("uploads/challenges", exist_ok=True)
+os.makedirs("uploads/avatars", exist_ok=True)
+os.makedirs("uploads/album_covers", exist_ok=True)
+os.makedirs("uploads/album_photos", exist_ok=True)
 
 # =============================
 # Database lifecycle management
@@ -124,7 +127,6 @@ async def profile():
 # =============================
 # Challenge API Routes
 # =============================
-
 @app.post("/api/challenge/join", summary="Join current weekly challenge")
 async def join_challenge(
     request: Request,
@@ -484,7 +486,6 @@ async def like_submission(
 # =============================
 # Helper functions for challenges
 # =============================
-
 async def create_default_challenge(db):
     """Create a default weekly challenge if none exists"""
     now = datetime.utcnow()
@@ -659,7 +660,7 @@ async def stylize(
 ):
     try:
         # Validate style
-        valid_styles = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika"]
+        valid_styles = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika", "cyberpunk"]
         if style not in valid_styles:
             return JSONResponse({"error": f"Invalid style. Choose from: {valid_styles}"}, status_code=400)
 
@@ -679,6 +680,8 @@ async def stylize(
         # Convert tensor to base64 string
         if style == "sketch":
             b64 = tensor_to_base64(output, model_type="unet")
+        elif style == "cyberpunk":
+            b64 = tensor_to_base64(output, model_type="cyberpunk")
         else:
             b64 = tensor_to_base64(output, model_type="stylization")
         
@@ -915,7 +918,6 @@ async def check_favorite(
 # =============================
 # Album API Routes
 # =============================
-
 @app.get("/api/albums", summary="Get user's albums")
 async def get_albums(current_user: UserInDB = Depends(get_current_user_strict)):
     """Get all albums for the current user"""
@@ -1213,7 +1215,6 @@ async def upload_images_to_album(
 # =============================
 # User Stats API
 # =============================
-
 @app.get("/api/user/stats", summary="Get user statistics")
 async def get_user_stats(current_user: UserInDB = Depends(get_current_user_strict)):
     """Get user statistics: transform count, favorite count, share count, total XP"""
@@ -1250,7 +1251,6 @@ async def get_user_stats(current_user: UserInDB = Depends(get_current_user_stric
 # =============================
 # Gallery Like API
 # =============================
-
 @app.post("/api/gallery/{image_id}/like", summary="Like/unlike gallery image")
 async def like_gallery_image(
     image_id: str,
@@ -1295,7 +1295,7 @@ async def like_gallery_image(
                     {"$inc": {"likes": 1}}
                 )
                 
-                # ========== 新增：给作品作者加 XP ==========
+                # 给作品作者加 XP
                 if str(image.get('user_id')) != current_user.id:
                     await db.users.update_one(
                         {"_id": ObjectId(image['user_id'])},
@@ -1326,7 +1326,6 @@ async def like_gallery_image(
 # =============================
 # User Profile API
 # =============================
-
 @app.put("/api/user/profile", summary="Update user profile")
 async def update_user_profile(
     request: Request,
@@ -1434,7 +1433,7 @@ async def get_user_profile(current_user: UserInDB = Depends(get_current_user_str
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
 # =============================
-# Image helpers (FIXED VERSION)
+# Image helpers
 # =============================
 transform = T.Compose([
     T.Resize((256, 256)),
@@ -1453,14 +1452,24 @@ def tensor_to_base64(tensor: torch.Tensor, model_type="unet"):
     """Convert model output tensor to base64 image string"""
     tensor = tensor.squeeze(0)  # Remove batch dimension
     
+    # Cyberpunk model handling (tanh output [-1, 1])
+    if model_type == "cyberpunk":
+        # Convert from [-1, 1] to [0, 1]
+        tensor = (tensor + 1) / 2
+        tensor = torch.clamp(tensor, 0, 1)
+        img = T.ToPILImage()(tensor.cpu())
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode()
+    
+    # Sketch model handling
     if model_type == "unet":
         tensor = (tensor + 1) / 2
-
+        # Convert to grayscale for sketch effect
         gray = 0.299 * tensor[0:1, :, :] + 0.587 * tensor[1:2, :, :] + 0.114 * tensor[2:3, :, :]
-
         tensor = torch.cat([gray, gray, gray], dim=0)
     else:
-
+        # Other models - normalize to [0, 1] if needed
         tensor_min = tensor.min()
         tensor_max = tensor.max()
         if tensor_min < 0 or tensor_max > 1:
@@ -1470,14 +1479,12 @@ def tensor_to_base64(tensor: torch.Tensor, model_type="unet"):
     
     # Convert to PIL Image
     img = T.ToPILImage()(tensor.cpu())
-
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
-
     return base64.b64encode(buffer.getvalue()).decode()
 
 # =============================
-# U-Net Model (Your trained model)
+# U-Net Model (Sketch)
 # =============================
 class UNet(nn.Module):
     def __init__(self, in_channels=3, out_channels=3):
@@ -1555,7 +1562,7 @@ class UNet(nn.Module):
         return d1
 
 # =============================
-# Style Transfer Network (PyTorch official)
+# Style Transfer Network (for anime/ink)
 # =============================
 class ConvLayer(torch.nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride):
@@ -1569,9 +1576,9 @@ class ConvLayer(torch.nn.Module):
         out = self.conv2d(out)
         return out
 
-class ResidualBlock(torch.nn.Module):
+class ResidualBlockV1(torch.nn.Module):
     def __init__(self, channels):
-        super(ResidualBlock, self).__init__()
+        super(ResidualBlockV1, self).__init__()
         self.conv1 = ConvLayer(channels, channels, kernel_size=3, stride=1)
         self.in1 = torch.nn.InstanceNorm2d(channels, affine=True)
         self.conv2 = ConvLayer(channels, channels, kernel_size=3, stride=1)
@@ -1601,9 +1608,9 @@ class UpsampleConvLayer(torch.nn.Module):
         out = self.conv2d(out)
         return out
 
-class TransformerNet(torch.nn.Module):
+class TransformerNetV1(torch.nn.Module):
     def __init__(self):
-        super(TransformerNet, self).__init__()
+        super(TransformerNetV1, self).__init__()
         # Initial convolution layers
         self.conv1 = ConvLayer(3, 32, kernel_size=9, stride=1)
         self.in1 = torch.nn.InstanceNorm2d(32, affine=True)
@@ -1612,11 +1619,11 @@ class TransformerNet(torch.nn.Module):
         self.conv3 = ConvLayer(64, 128, kernel_size=3, stride=2)
         self.in3 = torch.nn.InstanceNorm2d(128, affine=True)
         # Residual layers
-        self.res1 = ResidualBlock(128)
-        self.res2 = ResidualBlock(128)
-        self.res3 = ResidualBlock(128)
-        self.res4 = ResidualBlock(128)
-        self.res5 = ResidualBlock(128)
+        self.res1 = ResidualBlockV1(128)
+        self.res2 = ResidualBlockV1(128)
+        self.res3 = ResidualBlockV1(128)
+        self.res4 = ResidualBlockV1(128)
+        self.res5 = ResidualBlockV1(128)
         # Upsampling Layers
         self.deconv1 = UpsampleConvLayer(128, 64, kernel_size=3, stride=1, upsample=2)
         self.in4 = torch.nn.InstanceNorm2d(64, affine=True)
@@ -1641,13 +1648,59 @@ class TransformerNet(torch.nn.Module):
         return y
 
 # =============================
-# Load all 6 models (3 original + 3 anime)
+# TransformerNet V2 (for cyberpunk style)
 # =============================
-STYLE_NAMES = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika"]
+class ResidualBlockV2(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, 1, 1),
+            nn.InstanceNorm2d(channels, affine=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, channels, 3, 1, 1),
+            nn.InstanceNorm2d(channels, affine=True)
+        )
+
+    def forward(self, x):
+        return x + self.block(x)
+
+class TransformerNetV2(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 32, 9, 1, 4)
+        self.in1 = nn.InstanceNorm2d(32, affine=True)
+        self.conv2 = nn.Conv2d(32, 64, 3, 2, 1)
+        self.in2 = nn.InstanceNorm2d(64, affine=True)
+        self.conv3 = nn.Conv2d(64, 128, 3, 2, 1)
+        self.in3 = nn.InstanceNorm2d(128, affine=True)
+        self.res_blocks = nn.Sequential(*[ResidualBlockV2(128) for _ in range(5)])
+        self.deconv1 = nn.ConvTranspose2d(128, 64, 3, 2, 1, output_padding=1)
+        self.in4 = nn.InstanceNorm2d(64, affine=True)
+        self.deconv2 = nn.ConvTranspose2d(64, 32, 3, 2, 1, output_padding=1)
+        self.in5 = nn.InstanceNorm2d(32, affine=True)
+        self.conv_out = nn.Conv2d(32, 3, 9, 1, 4)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        y = self.relu(self.in1(self.conv1(x)))
+        y = self.relu(self.in2(self.conv2(y)))
+        y = self.relu(self.in3(self.conv3(y)))
+        y = self.res_blocks(y)
+        y = self.relu(self.in4(self.deconv1(y)))
+        y = self.relu(self.in5(self.deconv2(y)))
+        y = self.conv_out(y)
+        return torch.tanh(y)
+
+# =============================
+# Load all models
+# =============================
+STYLE_NAMES = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika", "cyberpunk"]
 models: Dict[str, torch.nn.Module] = {}
 
 print("Loading PyTorch style models...")
 print("=" * 50)
+
+from model import Generator, UNet
 
 def filter_state_dict(state_dict):
     """Remove running_mean and running_var keys from state_dict"""
@@ -1680,8 +1733,6 @@ def load_unet_model(model_path):
 
 def load_animegan_model(model_path):
     """Load AnimeGANv2 model (Hayao, Shinkai, Paprika)"""
-    from model import Generator  # Import the AnimeGAN generator from your model.py
-    
     model = Generator()
     
     # Load checkpoint
@@ -1706,68 +1757,125 @@ def load_animegan_model(model_path):
     model.load_state_dict(new_state_dict)
     return model
 
+def load_transformernet_v1_model(model_path):
+    """Load TransformerNet V1 model (anime, ink)"""
+    model = TransformerNetV1()
+    
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location="cpu")
+    
+    # Handle different checkpoint formats
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint
+    else:
+        state_dict = checkpoint
+    
+    # Try to load with strict=True first
+    try:
+        model.load_state_dict(state_dict)
+        print(f"   Loaded with strict matching")
+    except RuntimeError as e:
+        print(f"   ⚠️ Strict loading failed, trying with filtered dict...")
+        filtered_dict = filter_state_dict(state_dict)
+        model.load_state_dict(filtered_dict, strict=False)
+        print(f"   Loaded with filtered state_dict")
+    
+    return model
+
+def load_transformernet_v2_model(model_path):
+    """Load TransformerNet V2 model (cyberpunk)"""
+    model = TransformerNetV2()
+    
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location="cpu")
+    
+    # Handle different checkpoint formats
+    if isinstance(checkpoint, dict):
+        if 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        elif 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        else:
+            state_dict = checkpoint
+    else:
+        state_dict = checkpoint
+    
+    # Try to load with strict=True first
+    try:
+        model.load_state_dict(state_dict)
+        print(f"   Loaded with strict matching")
+    except RuntimeError as e:
+        print(f"   ⚠️ Strict loading failed, trying with filtered dict...")
+        filtered_dict = filter_state_dict(state_dict)
+        model.load_state_dict(filtered_dict, strict=False)
+        print(f"   Loaded with filtered state_dict")
+    
+    return model
+
 for name in STYLE_NAMES:
     model_path = f"models/{name}.pt"
     
     if not os.path.exists(model_path):
         print(f"⚠️ Model file not found: {model_path}, using random weights")
         if name == "sketch":
-            model = UNet()  # Use U-Net for sketch even if no weights
+            model = UNet()
+            print(f"   Using untrained UNet for: {name}")
         elif name in ["hayao", "shinkai", "paprika"]:
-            from model import Generator
-            model = Generator()  # Use AnimeGAN for hayao/shinkai/paprika
-        else:
-            model = TransformerNet()  # Use TransformerNet for others
+            model = Generator()
+            print(f"   Using untrained AnimeGAN for: {name}")
+        elif name == "cyberpunk":
+            model = TransformerNetV2()
+            print(f"   Using untrained TransformerNetV2 for: {name}")
+        else:  # anime, ink
+            model = TransformerNetV1()
+            print(f"   Using untrained TransformerNetV1 for: {name}")
     else:
         try:
             if name == "sketch":
                 # Load as U-Net
                 model = load_unet_model(model_path)
                 print(f"✅ Loaded U-Net model: {name}")
+                
             elif name in ["hayao", "shinkai", "paprika"]:
                 # Load as AnimeGAN
-                try:
-                    model = load_animegan_model(model_path)
-                    print(f"✅ Loaded AnimeGAN model: {name}")
-                except Exception as e:
-                    print(f"⚠️ Failed to load as AnimeGAN, trying TransformerNet: {e}")
-                    # If fails, try as TransformerNet
-                    model = TransformerNet()
-                    state_dict = torch.load(model_path, map_location="cpu")
-                    model.load_state_dict(state_dict, strict=False)
-                    print(f"✅ Loaded TransformerNet model: {name}")
-            else:
-                # Load as TransformerNet for anime and ink
-                model = TransformerNet()
-                state_dict = torch.load(model_path, map_location="cpu")
+                model = load_animegan_model(model_path)
+                print(f"✅ Loaded AnimeGAN model: {name}")
                 
-                try:
-                    model.load_state_dict(state_dict)
-                    print(f"✅ Loaded trained model: {name}")
-                except RuntimeError as e:
-                    print(f"⚠️ Version mismatch for {name}, filtering state_dict...")
-                    filtered_dict = filter_state_dict(state_dict)
-                    model.load_state_dict(filtered_dict, strict=False)
-                    print(f"✅ Loaded trained model: {name} (with filtered state_dict)")
-                    print(f"   Removed {len(state_dict) - len(filtered_dict)} unexpected keys")
+            elif name == "cyberpunk":
+                # Load your trained cyberpunk model as TransformerNetV2
+                model = load_transformernet_v2_model(model_path)
+                print(f"✅ Loaded Cyberpunk model: {name}")
+                
+            else:  # anime, ink
+                # Load as TransformerNetV1
+                model = load_transformernet_v1_model(model_path)
+                print(f"✅ Loaded TransformerNet model: {name}")
                     
         except Exception as e:
             print(f"❌ Failed to load model {name}: {e}")
+            import traceback
+            traceback.print_exc()
+            
             # Fallback to untrained model
             if name == "sketch":
                 model = UNet()
             elif name in ["hayao", "shinkai", "paprika"]:
-                from model import Generator
                 model = Generator()
+            elif name == "cyberpunk":
+                model = TransformerNetV2()
             else:
-                model = TransformerNet()
-            print(f"Using untrained demo model for: {name}")
+                model = TransformerNetV1()
+            print(f"Using untrained fallback model for: {name}")
 
     model.eval()
     models[name] = model
 
 print("=" * 50)
-print("\n✅ All models ready!")
-print(f"   Loaded {len(models)} models: {list(models.keys())}")
+print(f"\n✅ All models ready! Loaded {len(models)} models:")
 for name, model in models.items():
     print(f"   - {name}: {type(model).__name__}")
