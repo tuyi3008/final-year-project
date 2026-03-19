@@ -235,6 +235,28 @@
                     </span>
                 </div>
             </div>
+
+            <!-- ========== new: Aspect Ratio Selector ========== -->
+            <div class="ratio-selector">
+                <label for="aspect-ratio">
+                    <i class="bi bi-aspect-ratio me-2"></i>
+                    Output Aspect Ratio
+                </label>
+                <select id="aspect-ratio" class="ratio-dropdown">
+                    <option value="auto">Auto (Stretch to square) - Like original</option>
+                    <option value="1:1" selected>1:1 Square (Social media)</option>
+                    <option value="2:3">2:3 Portrait (Mobile)</option>
+                    <option value="3:2">3:2 Landscape (Standard photo)</option>
+                    <option value="4:3">4:3 Classic</option>
+                    <option value="3:4">3:4 Classic Portrait</option>
+                    <option value="16:9">16:9 Widescreen</option>
+                    <option value="9:16">9:16 Vertical (TikTok/Reels)</option>
+                </select>
+                <div class="ratio-info">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <span>Auto mode keeps original stretching behavior. Other ratios use smart cropping to preserve important content.</span>
+                </div>
+            </div>
             
             <select id="style-select" class="form-select d-none">
                 <option value="sketch">Pencil Sketch</option>

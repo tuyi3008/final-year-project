@@ -19,6 +19,8 @@ const actionButtons = document.getElementById('action-buttons');
 const resetBtn = document.getElementById('reset-btn');
 const steps = document.querySelectorAll('.step');
 
+const aspectRatioSelect = document.getElementById('aspect-ratio');
+
 // ====================== State Variables ======================
 let selectedFile = null;
 let selectedStyle = 'sketch';
@@ -243,6 +245,10 @@ transformBtn.addEventListener('click', async () => {
     formData.append('content', selectedFile);
     formData.append('style', selectedStyle);
 
+    const aspectRatio = aspectRatioSelect ? aspectRatioSelect.value : 'auto';
+    formData.append('aspect_ratio', aspectRatio);
+    console.log('Selected aspect ratio:', aspectRatio);
+
     try {
         const token = localStorage.getItem('token');
         console.log('Token from localStorage:', token ? token.substring(0, 20) + '...' : 'No token');
@@ -287,6 +293,10 @@ transformBtn.addEventListener('click', async () => {
             }
             
             showAlert('success', 'Image transformed successfully!');
+
+            if (data.crop_info) {
+                console.log('Cropping info:', data.crop_info);
+            }
         } else {
             showAlert('error', 'Processing failed');
         }
