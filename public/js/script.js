@@ -66,8 +66,10 @@ function showAlert(type, message) {
     }, 5000);
 }
 
-// Handle file selection
 function handleFileSelection(file) {
+    console.log('File selected:', file.name);
+    
+    // Validate file type and size
     const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
         showAlert('error', 'Please select a valid image file (JPEG or PNG)');
@@ -82,25 +84,62 @@ function handleFileSelection(file) {
 
     selectedFile = file;
 
-    // Update file info
+    // display file info
+    fileInfo.classList.remove('d-none');
     filenameSpan.textContent = file.name;
     filesizeSpan.textContent = formatFileSize(file.size);
-    fileInfo.classList.remove('d-none');
-
-    // Preview original image
+    
+    // fetch and display the image preview
+    const uploadPreview = document.getElementById('upload-preview');
+    const uploadIcon = document.getElementById('upload-icon');
+    const uploadText = document.getElementById('upload-text');
+    const uploadSubtext = document.getElementById('upload-subtext');
+    const browseBtn = document.getElementById('browse-btn');
+    
+    // fetch thumbnail elements
+    const thumbnailImg = document.getElementById('file-thumbnail-img');
+    const placeholder = document.getElementById('file-thumbnail-placeholder');
+    
+    // read the file and display preview
     const reader = new FileReader();
     reader.onload = function(e) {
-        originalImg.src = e.target.result;
+        console.log('FileReader loaded');
+        
+        // display the uploaded image in the upload zone
+        if (uploadPreview) {
+            uploadPreview.src = e.target.result;
+            uploadPreview.style.display = 'block';
+        }
+        
+        // hide the original upload prompts
+        if (uploadIcon) uploadIcon.style.display = 'none';
+        if (uploadText) uploadText.style.display = 'none';
+        if (uploadSubtext) uploadSubtext.style.display = 'none';
+        if (browseBtn) browseBtn.style.display = 'none';
+        
+        // display thumbnail in file info section
+        if (thumbnailImg) {
+            thumbnailImg.src = e.target.result;
+            thumbnailImg.style.display = 'block';
+        }
+        if (placeholder) {
+            placeholder.style.display = 'none';
+        }
+        
+        // display original image in result section
+        if (originalImg) {
+            originalImg.src = e.target.result;
+        }
+        
+        // show style options and action buttons
         styleSection.style.display = 'block';
         actionButtons.style.display = 'block';
         resultSection.style.display = 'none';
         transformBtn.disabled = false;
         updateSteps(2);
-        selectStyleCard('sketch'); // Default style
+        selectStyleCard('sketch');
     };
-    reader.onerror = function() {
-        showAlert('error', 'Failed to read the image file');
-    };
+    
     reader.readAsDataURL(file);
 }
 
@@ -115,11 +154,38 @@ function selectStyleCard(style) {
     });
 }
 
-// Clear selected file and reset UI
 function clearFileSelection() {
     selectedFile = null;
     currentProcessedImage = null;
     fileInput.value = '';
+    
+    // Reset upload zone
+    const uploadPreview = document.getElementById('upload-preview');
+    const uploadIcon = document.getElementById('upload-icon');
+    const uploadText = document.getElementById('upload-text');
+    const uploadSubtext = document.getElementById('upload-subtext');
+    const browseBtn = document.getElementById('browse-btn');
+    
+    if (uploadPreview) {
+        uploadPreview.src = '';
+        uploadPreview.style.display = 'none';
+    }
+    if (uploadIcon) uploadIcon.style.display = 'block';
+    if (uploadText) uploadText.style.display = 'block';
+    if (uploadSubtext) uploadSubtext.style.display = 'block';
+    if (browseBtn) browseBtn.style.display = 'inline-block';
+    
+    // Reset thumbnail
+    const thumbnailImg = document.getElementById('file-thumbnail-img');
+    const placeholder = document.getElementById('file-thumbnail-placeholder');
+    if (thumbnailImg) {
+        thumbnailImg.src = '';
+        thumbnailImg.style.display = 'none';
+    }
+    if (placeholder) {
+        placeholder.style.display = 'flex';
+    }
+    
     fileInfo.classList.add('d-none');
     styleSection.style.display = 'none';
     actionButtons.style.display = 'none';

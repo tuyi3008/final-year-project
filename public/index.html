@@ -111,12 +111,14 @@
             </div>
             
             <div class="upload-zone" id="drop-zone">
-                <div class="upload-icon">
+                <img id="upload-preview" src="" alt="Preview" style="width: 100%; height: 100%; object-fit: cover; display: none; border-radius: 12px;">
+                
+                <div class="upload-icon" id="upload-icon">
                     <i class="bi bi-cloud-arrow-up glow"></i>
                 </div>
-                <h4 class="mb-3">Upload your image</h4>
-                <p class="text-muted mb-4">Supports JPG, PNG • Max 10MB</p>
-                <button class="btn btn-gradient">
+                <h4 class="mb-3" id="upload-text">Upload your image</h4>
+                <p class="text-muted mb-4" id="upload-subtext">Supports JPG, PNG • Max 10MB</p>
+                <button class="btn btn-gradient" id="browse-btn">
                     <i class="bi bi-folder2-open me-2"></i>
                     Browse Files
                 </button>
@@ -126,7 +128,14 @@
             <!-- File Info -->
             <div id="file-info" class="mt-4 d-none">
                 <div class="alert-glass alert d-flex align-items-center">
-                    <i class="bi bi-check-circle-fill text-success me-3 fs-4"></i>
+                    <!-- add file thumbnail -->
+                    <div class="file-thumbnail me-3">
+                        <img id="file-thumbnail-img" src="" alt="Preview" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; display: none;">
+                        <div id="file-thumbnail-placeholder" class="file-thumbnail-placeholder">
+                            <i class="bi bi-image"></i>
+                        </div>
+                    </div>
+
                     <div class="flex-grow-1">
                         <strong id="filename" class="d-block"></strong>
                         <small class="text-muted" id="filesize"></small>
@@ -243,14 +252,13 @@
                     Output Aspect Ratio
                 </label>
                 <select id="aspect-ratio" class="ratio-dropdown">
-                    <option value="auto">Auto (Stretch to square) - Like original</option>
-                    <option value="1:1" selected>1:1 Square (Social media)</option>
-                    <option value="2:3">2:3 Portrait (Mobile)</option>
-                    <option value="3:2">3:2 Landscape (Standard photo)</option>
-                    <option value="4:3">4:3 Classic</option>
-                    <option value="3:4">3:4 Classic Portrait</option>
-                    <option value="16:9">16:9 Widescreen</option>
-                    <option value="9:16">9:16 Vertical (TikTok/Reels)</option>
+                    <option value="auto">🔄 Auto (Keep original)</option>
+                    <option value="1:1" selected>⬛ 1:1 Square - Instagram, Profile</option>
+                    <option value="4:3">🖼️ 4:3 Classic - Photos, iPad</option>
+                    <option value="16:9">🎬 16:9 Widescreen - YouTube, TV</option>
+                    <option value="9:16">📱 9:16 Vertical - TikTok, Stories</option>
+                    <option value="3:2">📸 3:2 Landscape - DSLR Photos</option>
+                    <option value="2:3">👤 2:3 Portrait - Phone wallpaper</option>
                 </select>
                 <div class="ratio-info">
                     <i class="bi bi-info-circle-fill"></i>
