@@ -40,18 +40,16 @@ load_dotenv()
 
 
 # =============================
-# Saliency-based Cropper Class
+# Saliency-based Cropper Class - ULTRA FAST VERSION
 # =============================
 class SaliencyCropper:
     """
-    Saliency-based adaptive cropping
+    Fast cropping based on face detection and center crop
+    Removed slow saliency detection for speed
     """
     
     def __init__(self):
-        # Initialize saliency detector
-        self.saliency = cv2.saliency.StaticSaliencyFineGrained_create()
-        
-        # Initialize face detector
+        # Initialize face detector only (remove saliency)
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
@@ -60,7 +58,7 @@ class SaliencyCropper:
         self.stats = {
             'total': 0,
             'face_detected': 0,
-            'saliency_only': 0,
+            'center_used': 0,
             'fallback_used': 0
         }
     
@@ -68,7 +66,7 @@ class SaliencyCropper:
                 pil_image: Image.Image, 
                 target_ratio: str = "1:1") -> Tuple[Image.Image, Dict]:
         """
-        Main processing function
+        Ultra fast processing - no saliency detection
         """
         start_time = time.time()
         self.stats['total'] += 1
@@ -79,12 +77,11 @@ class SaliencyCropper:
             'face_count': 0,
             'processing_time': 0,
             'crop_box': None,
-            'quality_score': 0,
             'original_size': pil_image.size
         }
         
         try:
-            # Convert format
+            # Convert format for face detection
             img_np = np.array(pil_image)
             img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
             h, w = img_cv.shape[:2]
@@ -93,212 +90,60 @@ class SaliencyCropper:
             target_w, target_h = map(int, target_ratio.split(':'))
             target_ratio_float = target_w / target_h
             
-            # === 1. Compute saliency map ===
-            success, saliency_map = self.saliency.computeSaliency(img_cv)
-            if not success:
-                # Saliency computation failed, fallback to center crop
-                info['method'] = 'fallback_center'
-                self.stats['fallback_used'] += 1
-                return self._center_crop(pil_image, target_ratio_float), info
-            
-            # Normalize saliency map
-            saliency_map = (saliency_map * 255).astype(np.uint8)
-            
-            # === 2. Face detection (supplement) ===
+            # Fast face detection (less sensitive for speed)
             gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
             faces = self.face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+                gray, 
+                scaleFactor=1.3,        # Increased for fewer false positives
+                minNeighbors=8,          # Increased for fewer false positives
+                minSize=(60, 60)         # Increased to ignore small false detections
             )
+            
             info['face_count'] = len(faces)
             
-            # === 3. Create importance map ===
-            importance_map = self._create_importance_map(
-                saliency_map, faces, (h, w)
-            )
-            
-            # === 4. Find optimal crop region ===
-            crop_box, quality = self._find_optimal_crop(
-                importance_map, (w, h), target_ratio_float
-            )
-            
-            info['crop_box'] = crop_box
-            info['quality_score'] = quality
-            
-            # === 5. Quality check and fallback ===
-            if quality < 0.5:
-                # Quality too low, use face detection or center crop
-                if len(faces) > 0:
-                    crop_box = self._face_protected_crop(
-                        faces, (w, h), target_ratio_float
-                    )
-                    info['method'] = 'face_protected'
-                    self.stats['face_detected'] += 1
-                else:
-                    crop_box = self._get_center_crop_box(
-                        (w, h), target_ratio_float
-                    )
-                    info['method'] = 'fallback_center'
-                    self.stats['fallback_used'] += 1
+            # Decision: use face detection or center crop
+            if len(faces) > 0:
+                # Use face-protected crop
+                crop_box = self._face_protected_crop(
+                    faces, (w, h), target_ratio_float
+                )
+                info['method'] = 'face_protected'
+                self.stats['face_detected'] += 1
             else:
-                info['method'] = 'saliency_optimal'
-                if len(faces) > 0:
-                    self.stats['face_detected'] += 1
-                else:
-                    self.stats['saliency_only'] += 1
+                # Use center crop
+                crop_box = self._get_center_crop_box(
+                    (w, h), target_ratio_float
+                )
+                info['method'] = 'center_crop'
+                self.stats['center_used'] += 1
             
-            # === 6. Execute crop ===
+            # FIX: Convert numpy ints to Python ints for JSON serialization
+            if crop_box:
+                info['crop_box'] = tuple(int(x) for x in crop_box)
+            
+            # Execute crop
             x1, y1, x2, y2 = crop_box
             cropped = pil_image.crop((x1, y1, x2, y2))
             
-            # === 7. Resize to model input size ===
-            result = cropped.resize((256, 256), Image.LANCZOS)
-            
             info['processing_time'] = time.time() - start_time
             
-            return result, info
+            return cropped, info
             
         except Exception as e:
             print(f"Processing error: {e}, using fallback")
             info['method'] = 'error_fallback'
             self.stats['fallback_used'] += 1
-            return self._center_crop(pil_image, target_ratio_float), info
-    
-    def _create_importance_map(self, 
-                              saliency_map: np.ndarray, 
-                              faces: List, 
-                              img_shape: Tuple[int, int]) -> np.ndarray:
-        """
-        Create fused importance map
-        """
-        h, w = img_shape
-        importance = saliency_map.astype(np.float32) / 255.0
-        
-        # 1. Face region enhancement
-        for (x, y, fw, fh) in faces:
-            # Double weight in face region
-            importance[y:y+fh, x:x+fw] = np.maximum(
-                importance[y:y+fh, x:x+fw], 
-                0.8
-            )
-            
-            # Add Gaussian decay around face
-            face_center = (x + fw//2, y + fh//2)
-            for i in range(max(0, y-50), min(h, y+fh+50)):
-                for j in range(max(0, x-50), min(w, x+fw+50)):
-                    dist = np.sqrt((i - face_center[1])**2 + (j - face_center[0])**2)
-                    if dist < 100:
-                        importance[i, j] = max(
-                            importance[i, j], 
-                            0.5 * np.exp(-dist/50)
-                        )
-        
-        # 2. Center bias (photography composition)
-        center_bias = self._create_center_bias(h, w)
-        importance = importance * 0.7 + center_bias * 0.3
-        
-        # 3. Edge protection
-        edge_mask = self._create_edge_protection_mask(h, w)
-        importance = importance * edge_mask
-        
-        return importance
-    
-    def _create_center_bias(self, h: int, w: int) -> np.ndarray:
-        """Create center bias matrix"""
-        y, x = np.ogrid[:h, :w]
-        center_y, center_x = h/2, w/2
-        
-        # Gaussian distribution
-        bias = np.exp(
-            -((x - center_x)**2/(w/3)**2 + (y - center_y)**2/(h/3)**2)
-        )
-        return bias
-    
-    def _create_edge_protection_mask(self, h: int, w: int) -> np.ndarray:
-        """Create edge protection mask"""
-        mask = np.ones((h, w))
-        
-        # 10% edge area gets attenuation but not zero
-        edge_size = min(h, w) // 10
-        
-        # Left edge
-        mask[:, :edge_size] *= np.linspace(0.8, 1.0, edge_size)
-        # Right edge
-        mask[:, -edge_size:] *= np.linspace(1.0, 0.8, edge_size)
-        # Top edge
-        mask[:edge_size, :] *= np.linspace(0.8, 1.0, edge_size).reshape(-1, 1)
-        # Bottom edge
-        mask[-edge_size:, :] *= np.linspace(1.0, 0.8, edge_size).reshape(-1, 1)
-        
-        return mask
-    
-    def _find_optimal_crop(self, 
-                          importance_map: np.ndarray, 
-                          img_size: Tuple[int, int], 
-                          target_ratio: float) -> Tuple[Tuple[int, int, int, int], float]:
-        """
-        Find optimal crop region
-        """
-        w, h = img_size
-        best_score = -1
-        best_box = None
-        
-        if w / h > target_ratio:
-            # Need to crop width
-            crop_w = int(h * target_ratio)
-            step = max(1, (w - crop_w) // 30)  # Sample 30 positions
-            
-            for x in range(0, w - crop_w + 1, step):
-                region = importance_map[:, x:x+crop_w]
-                score = np.sum(region)
-                
-                # Consider maximum importance in region
-                max_val = np.max(region)
-                score = score * 0.7 + max_val * crop_w * h * 0.3
-                
-                if score > best_score:
-                    best_score = score
-                    best_box = (x, 0, x + crop_w, h)
-            
-            # Check last position
-            x = w - crop_w
-            region = importance_map[:, x:x+crop_w]
-            score = np.sum(region) * 0.7 + np.max(region) * crop_w * h * 0.3
-            if score > best_score:
-                best_score = score
-                best_box = (x, 0, x + crop_w, h)
-                
-        else:
-            # Need to crop height
-            crop_h = int(w / target_ratio)
-            step = max(1, (h - crop_h) // 30)
-            
-            for y in range(0, h - crop_h + 1, step):
-                region = importance_map[y:y+crop_h, :]
-                score = np.sum(region) * 0.7 + np.max(region) * w * crop_h * 0.3
-                
-                if score > best_score:
-                    best_score = score
-                    best_box = (0, y, w, y + crop_h)
-            
-            y = h - crop_h
-            region = importance_map[y:y+crop_h, :]
-            score = np.sum(region) * 0.7 + np.max(region) * w * crop_h * 0.3
-            if score > best_score:
-                best_score = score
-                best_box = (0, y, w, y + crop_h)
-        
-        # Normalize score
-        max_possible = np.sum(importance_map)
-        quality = best_score / max_possible if max_possible > 0 else 0
-        
-        return best_box, quality
+            # Simple center crop fallback
+            result = self._center_crop(pil_image, target_ratio_float)
+            info['processing_time'] = time.time() - start_time
+            return result, info
     
     def _face_protected_crop(self, 
                             faces: List, 
                             img_size: Tuple[int, int], 
                             target_ratio: float) -> Tuple[int, int, int, int]:
         """
-        Face-protected cropping
+        Face-protected cropping - returns Python ints
         """
         w, h = img_size
         
@@ -308,8 +153,8 @@ class SaliencyCropper:
         min_y = min(y for (x, y, fw, fh) in faces)
         max_y = max(y + fh for (x, y, fw, fh) in faces)
         
-        # Expand 30% as buffer
-        padding = 0.3
+        # Expand 20% as buffer
+        padding = 0.2
         width_pad = int((max_x - min_x) * padding)
         height_pad = int((max_y - min_y) * padding)
         
@@ -320,31 +165,35 @@ class SaliencyCropper:
         if w / h > target_ratio:
             crop_w = int(h * target_ratio)
             left = max(0, min(face_center_x - crop_w // 2, w - crop_w))
-            return (left, 0, left + crop_w, h)
+            # FIX: Ensure all values are Python ints
+            return (int(left), 0, int(left + crop_w), int(h))
         else:
             crop_h = int(w / target_ratio)
             top = max(0, min(face_center_y - crop_h // 2, h - crop_h))
-            return (0, top, w, top + crop_h)
+            # FIX: Ensure all values are Python ints
+            return (0, int(top), int(w), int(top + crop_h))
     
     def _get_center_crop_box(self, 
                             img_size: Tuple[int, int], 
                             target_ratio: float) -> Tuple[int, int, int, int]:
-        """Get center crop box"""
+        """Get center crop box - returns Python ints"""
         w, h = img_size
         
         if w / h > target_ratio:
             crop_w = int(h * target_ratio)
             left = (w - crop_w) // 2
-            return (left, 0, left + crop_w, h)
+            # FIX: Ensure all values are Python ints
+            return (int(left), 0, int(left + crop_w), int(h))
         else:
             crop_h = int(w / target_ratio)
             top = (h - crop_h) // 2
-            return (0, top, w, top + crop_h)
+            # FIX: Ensure all values are Python ints
+            return (0, int(top), int(w), int(top + crop_h))
     
     def _center_crop(self, 
                     pil_image: Image.Image, 
                     target_ratio: float) -> Image.Image:
-        """Center crop"""
+        """Center crop - returns cropped image"""
         w, h = pil_image.size
         
         if w / h > target_ratio:
@@ -994,9 +843,9 @@ async def stylize(
 ):
     start_time = time.time()
     
-    print(f"\n========== new request ==========")
-    print(f"style: {style}")
-    print(f"ratio: {aspect_ratio}")
+    print(f"\n========== NEW REQUEST ==========")
+    print(f"Style: {style}")
+    print(f"Target ratio: {aspect_ratio}")
 
     try:
         # Validate style
@@ -1016,79 +865,95 @@ async def stylize(
         # Load image with PIL
         pil_image = Image.open(io.BytesIO(original_bytes)).convert("RGB")
         
-        # Process aspect ratio
+        # ===== Calculate display size =====
+        max_display_size = 512
+        
         if aspect_ratio == "auto":
-            print("👉 Use auto mode (direct stretch)")
-            # Auto mode: no crop, just resize
+            print("👉 Using auto mode (direct square)")
             processed_image = pil_image.resize((256, 256), Image.LANCZOS)
+            model_input = processed_image
+            display_size = (256, 256)
             crop_info = {'method': 'auto_resize', 'original_size': pil_image.size}
         else:
-            print(f"👉 use saliency cropping, ratio: {aspect_ratio}")
-            print("Start calling cropper.process()...")
+            # Parse user selected ratio
+            target_w, target_h = map(int, aspect_ratio.split(':'))
+            
+            # Calculate display dimensions
+            if target_w > target_h:
+                display_w = max_display_size
+                display_h = int(max_display_size * target_h / target_w)
+            else:
+                display_h = max_display_size
+                display_w = int(max_display_size * target_w / target_h)
+            
+            display_size = (display_w, display_h)
+            print(f"👉 Display size: {display_w}x{display_h}")
+            print(f"👉 Using saliency cropping for ratio: {aspect_ratio}")
+            
             # Use saliency cropping
             crop_start = time.time()
-            processed_image, crop_info = cropper.process(pil_image, aspect_ratio)
-            print(f"✅ cropper.process() Return, time taken: {time.time() - crop_start:.2f}seconds")
-            print(f"Cutting method: {crop_info.get('method')}")
-            print(f"Number of faces: {crop_info.get('face_count')}")
-            print(f"quality score: {crop_info.get('quality_score')}")
+            cropped_image, crop_info = cropper.process(pil_image, aspect_ratio)
+            
+            print(f"✅ cropper.process() completed in: {time.time() - crop_start:.2f}s")
+            print(f"   Cropping method: {crop_info.get('method')}")
+            print(f"   Faces detected: {crop_info.get('face_count')}")
+            
+            # Create model input (256x256)
+            model_input = cropped_image.resize((256, 256), Image.LANCZOS)
         
-        print(f"Total time spend: {time.time() - start_time:.2f}seconds")
-        print("===========================\n")
+        print(f"Total processing time: {time.time() - start_time:.2f}s")
         
         # Convert to tensor
-        content_tensor = image_to_tensor(processed_image)
+        content_tensor = image_to_tensor(model_input)
 
-        # Rest of the code remains exactly the same...
+        # Run style transfer model
         with torch.no_grad():
             output = models[style](content_tensor)
 
         # Debug: print output range
         print(f"Output range for {style}: min={output.min():.3f}, max={output.max():.3f}, mean={output.mean():.3f}")
 
-        # Convert tensor to base64 string
-        if style == "sketch":
-            b64 = tensor_to_base64(output, model_type="unet")
-        elif style == "cyberpunk":
-            b64 = tensor_to_base64(output, model_type="cyberpunk")
-        else:
-            b64 = tensor_to_base64(output, model_type="stylization")
+        # Convert tensor to PIL image
+        output_image = tensor_to_pil(output, style)
         
-        # ========== Save to history ONLY for authenticated users ==========
+        # ===== KEY FIX: Resize output to correct display size =====
+        if aspect_ratio != "auto":
+            output_image = output_image.resize(display_size, Image.LANCZOS)
+        
+        # Convert to base64 for frontend
+        buffer = io.BytesIO()
+        output_image.save(buffer, format="PNG")
+        b64 = base64.b64encode(buffer.getvalue()).decode()
+        
+        # ========== Save to history ==========
         xp_reward = 0
         if current_user:
             try:
-                # Generate unique identifiers for files
+                # Save files...
                 file_id = str(uuid.uuid4())
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 
                 # Save original image
                 original_filename = f"{current_user.id}_{timestamp}_{file_id}_original.jpg"
                 original_path = f"uploads/originals/{original_filename}"
-                
                 with open(original_path, "wb") as f:
                     f.write(original_bytes)
                 
-                # Save transformed result image
+                # Save result image (at display size)
                 result_filename = f"{current_user.id}_{timestamp}_{file_id}_{style}_{aspect_ratio}.png"
                 result_path = f"uploads/transformed/{result_filename}"
+                output_image.save(result_path, "PNG")
                 
-                # Convert base64 back to image and save
-                image_data = base64.b64decode(b64)
-                result_image = Image.open(io.BytesIO(image_data))
-                result_image.save(result_path, "PNG")
-                
-                # Get database connection
+                # Database record
                 db = get_db()
-                
-                # Create history record for database - ADD crop_method
                 history_record = {
                     "user_id": current_user.id,
                     "user_email": current_user.email,
                     "username": current_user.username,
                     "style": style,
-                    "aspect_ratio": aspect_ratio,  # ADD THIS
-                    "crop_method": crop_info.get('method'),  # ADD THIS
+                    "aspect_ratio": aspect_ratio,
+                    "crop_method": crop_info.get('method'),
+                    "display_size": display_size,
                     "original_image_path": original_path,
                     "result_image_path": result_path,
                     "original_filename": original_filename,
@@ -1096,46 +961,59 @@ async def stylize(
                     "file_size": len(original_bytes),
                     "created_at": datetime.utcnow()
                 }
-                
-                # Insert into MongoDB history collection
                 await db.history.insert_one(history_record)
-                print(f"✅ History saved for authenticated user: {current_user.email}")
-
+                
+                # Award XP
                 xp_reward = 5
                 await db.users.update_one(
                     {"_id": ObjectId(current_user.id)},
                     {"$inc": {"total_xp": xp_reward}}
                 )
                 
-                await db.user_xp.insert_one({
-                    "user_id": current_user.id,
-                    "amount": xp_reward,
-                    "source": "image_transform",
-                    "style": style,
-                    "aspect_ratio": aspect_ratio,  # ADD THIS
-                    "created_at": datetime.utcnow()
-                })
-                
             except Exception as e:
-                # Non-critical error - don't fail the request, just log it
-                print(f"⚠️ Failed to save history (non-critical): {e}")
-        else:
-            # Anonymous user - skip database save
-            print(f"ℹ️ Anonymous user request - history not saved")
-        # ================================================================
+                print(f"⚠️ Failed to save history: {e}")
+        
+        print("=================================\n")
 
-        # Return transformed image to client - ADD crop_info
+        # Return transformed image
         return {
             "image_base64": b64,
             "xp_reward": xp_reward if current_user else 0,
-            "aspect_ratio": aspect_ratio,  # ADD THIS
-            "crop_info": crop_info  # ADD THIS
+            "aspect_ratio": aspect_ratio,
+            "display_size": display_size,
+            "crop_info": crop_info
         }
 
     except Exception as e:
-        # Log error and return 500 response
-        print(f"❌ Error during image transformation: {e}")
+        print(f"❌ Error: {e}")
+        traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# =============================
+# Add this helper function
+# =============================
+def tensor_to_pil(tensor: torch.Tensor, style: str) -> Image.Image:
+    """Convert model output tensor to PIL image"""
+    tensor = tensor.squeeze(0).cpu()
+    
+    # Handle different model types
+    if style == "cyberpunk":
+        tensor = (tensor + 1) / 2  # Tanh output [-1, 1] -> [0, 1]
+    elif style == "sketch":
+        tensor = (tensor + 1) / 2
+        # Convert to grayscale for sketch
+        gray = 0.299 * tensor[0] + 0.587 * tensor[1] + 0.114 * tensor[2]
+        tensor = torch.stack([gray, gray, gray])
+    else:
+        # Normalize to [0, 1]
+        tensor_min = tensor.min()
+        tensor_max = tensor.max()
+        if tensor_min < 0 or tensor_max > 1:
+            tensor = (tensor - tensor_min) / (tensor_max - tensor_min + 1e-8)
+    
+    tensor = torch.clamp(tensor, 0, 1)
+    return T.ToPILImage()(tensor)
 
 # =============================
 # Serve uploaded files (for development)
@@ -1832,12 +1710,12 @@ def load_image(file: UploadFile):
     return tensor
 
 def image_to_tensor(image: Image.Image) -> torch.Tensor:
-    """Convert PIL image to tensor"""
+    """Convert PIL image to tensor - preserves original dimensions"""
     transform = T.Compose([
         T.ToTensor(),
         T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
-    return transform(image).unsqueeze(0)
+    return transform(image).unsqueeze(0)  # No forced resize to 256x256
 
 def tensor_to_base64(tensor: torch.Tensor, model_type="unet"):
     """Convert model output tensor to base64 image string"""
