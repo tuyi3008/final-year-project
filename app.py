@@ -20,6 +20,7 @@ from PIL import Image
 import torchvision.transforms as T
 from dotenv import load_dotenv
 from bson import ObjectId
+from model import Generator, UNet, TransformerNet, UkiyoEGenerator
 
 # Import database connection functions
 from database import connect_to_mongo, close_mongo_connection, get_db
@@ -849,7 +850,7 @@ async def stylize(
 
     try:
         # Validate style
-        valid_styles = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika", "cyberpunk"]
+        valid_styles = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika", "cyberpunk", "ukiyoe"]
         if style not in valid_styles:
             return JSONResponse({"error": f"Invalid style. Choose from: {valid_styles}"}, status_code=400)
         
@@ -1005,6 +1006,8 @@ def tensor_to_pil(tensor: torch.Tensor, style: str) -> Image.Image:
         # Convert to grayscale for sketch
         gray = 0.299 * tensor[0] + 0.587 * tensor[1] + 0.114 * tensor[2]
         tensor = torch.stack([gray, gray, gray])
+    elif style == "ukiyoe":
+        tensor = (tensor + 1) / 2  # Tanh output [-1, 1] -> [0, 1]
     else:
         # Normalize to [0, 1]
         tensor_min = tensor.min()
@@ -1731,6 +1734,16 @@ def tensor_to_base64(tensor: torch.Tensor, model_type="unet"):
         img.save(buffer, format="PNG")
         return base64.b64encode(buffer.getvalue()).decode()
     
+    # Ukiyo-e model handling (tanh output [-1, 1])
+    if model_type == "ukiyoe":
+        # Convert from [-1, 1] to [0, 1]
+        tensor = (tensor + 1) / 2
+        tensor = torch.clamp(tensor, 0, 1)
+        img = T.ToPILImage()(tensor.cpu())
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode()
+    
     # Sketch model handling
     if model_type == "unet":
         tensor = (tensor + 1) / 2
@@ -1963,13 +1976,13 @@ class TransformerNetV2(nn.Module):
 # =============================
 # Load all models
 # =============================
-STYLE_NAMES = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika", "cyberpunk"]
+STYLE_NAMES = ["sketch", "anime", "ink", "hayao", "shinkai", "paprika", "cyberpunk", "ukiyoe"]
 models: Dict[str, torch.nn.Module] = {}
 
 print("Loading PyTorch style models...")
 print("=" * 50)
 
-from model import Generator, UNet
+# from model import Generator, UNet
 
 def filter_state_dict(state_dict):
     """Remove running_mean and running_var keys from state_dict"""
@@ -2086,6 +2099,33 @@ def load_transformernet_v2_model(model_path):
     
     return model
 
+def load_ukiyoe_model(model_path):
+    """Load your trained Ukiyo-e model"""
+    from model import UkiyoEGenerator
+    model = UkiyoEGenerator()
+    
+    # Load checkpoint
+    checkpoint = torch.load(model_path, map_location="cpu")
+    
+    # Handle different checkpoint formats
+    if isinstance(checkpoint, dict):
+        if 'G_BA_state_dict' in checkpoint:
+            state_dict = checkpoint['G_BA_state_dict']
+            print(f"   Loaded G_BA (photo -> ukiyo-e) weights")
+        elif 'G_AB_state_dict' in checkpoint:
+            state_dict = checkpoint['G_AB_state_dict']
+            print(f"   Loaded G_AB (ukiyoe -> photo) weights")
+        elif 'model_state_dict' in checkpoint:
+            state_dict = checkpoint['model_state_dict']
+        else:
+            state_dict = checkpoint
+    else:
+        state_dict = checkpoint
+    
+    # Load weights
+    model.load_state_dict(state_dict, strict=False)
+    return model
+
 for name in STYLE_NAMES:
     model_path = f"models/{name}.pt"
     
@@ -2100,28 +2140,31 @@ for name in STYLE_NAMES:
         elif name == "cyberpunk":
             model = TransformerNetV2()
             print(f"   Using untrained TransformerNetV2 for: {name}")
+        elif name == "ukiyoe":                              
+            model = UkiyoEGenerator()                        
+            print(f"   Using untrained UkiyoEGenerator for: {name}")  
         else:  # anime, ink
             model = TransformerNetV1()
             print(f"   Using untrained TransformerNetV1 for: {name}")
     else:
         try:
             if name == "sketch":
-                # Load as U-Net
                 model = load_unet_model(model_path)
                 print(f"✅ Loaded U-Net model: {name}")
                 
             elif name in ["hayao", "shinkai", "paprika"]:
-                # Load as AnimeGAN
                 model = load_animegan_model(model_path)
                 print(f"✅ Loaded AnimeGAN model: {name}")
                 
             elif name == "cyberpunk":
-                # Load your trained cyberpunk model as TransformerNetV2
                 model = load_transformernet_v2_model(model_path)
                 print(f"✅ Loaded Cyberpunk model: {name}")
                 
+            elif name == "ukiyoe":                          
+                model = load_ukiyoe_model(model_path)        
+                print(f"✅ Loaded Ukiyo-e model: {name}")    
+                
             else:  # anime, ink
-                # Load as TransformerNetV1
                 model = load_transformernet_v1_model(model_path)
                 print(f"✅ Loaded TransformerNet model: {name}")
                     
@@ -2137,6 +2180,8 @@ for name in STYLE_NAMES:
                 model = Generator()
             elif name == "cyberpunk":
                 model = TransformerNetV2()
+            elif name == "ukiyoe":                          
+                model = UkiyoEGenerator()                    
             else:
                 model = TransformerNetV1()
             print(f"Using untrained fallback model for: {name}")

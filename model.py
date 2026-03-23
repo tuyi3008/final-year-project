@@ -293,3 +293,71 @@ class UNet(nn.Module):
         d2 = torch.cat([d2, e1], dim=1)
         d1 = self.dec1(d2)
         return d1
+
+
+# =============================
+# Ukiyo-e Generator (浮世绘风格 - CycleGAN Architecture)
+# =============================
+class UkiyoEResidualBlock(nn.Module):
+    """Residual Block for Ukiyo-e style"""
+    def __init__(self, dim):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(dim, dim, 3),
+            nn.InstanceNorm2d(dim),
+            nn.ReLU(inplace=True),
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(dim, dim, 3),
+            nn.InstanceNorm2d(dim)
+        )
+    
+    def forward(self, x):
+        return x + self.block(x)
+
+
+class UkiyoEGenerator(nn.Module):
+    """Generator for Ukiyo-e style transfer (CycleGAN architecture)"""
+    def __init__(self, n_residuals=9):
+        super().__init__()
+        
+        model = [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(3, 64, 7),
+            nn.InstanceNorm2d(64),
+            nn.ReLU(inplace=True)
+        ]
+        
+        # Downsampling
+        model += [
+            nn.Conv2d(64, 128, 3, 2, 1),
+            nn.InstanceNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 256, 3, 2, 1),
+            nn.InstanceNorm2d(256),
+            nn.ReLU(inplace=True)
+        ]
+        
+        # Residual blocks
+        for _ in range(n_residuals):
+            model.append(UkiyoEResidualBlock(256))
+        
+        # Upsampling
+        model += [
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(256, 128, 3, 1, 1),
+            nn.InstanceNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            nn.Conv2d(128, 64, 3, 1, 1),
+            nn.InstanceNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(64, 3, 7),
+            nn.Tanh()
+        ]
+        
+        self.model = nn.Sequential(*model)
+    
+    def forward(self, x):
+        return self.model(x)
