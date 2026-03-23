@@ -30,6 +30,8 @@ async def connect_to_mongo():
         print("✅ MongoDB ping successful")
         
         await ensure_collections()
+
+        await migrate_photo_styles()
         
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
@@ -40,6 +42,26 @@ async def close_mongo_connection():
     if mongodb.client:
         mongodb.client.close()
         print("❌ MongoDB connection closed")
+
+async def migrate_photo_styles():
+    try:
+        if mongodb.database is None:
+            return
+        
+        photos = mongodb.database["photos"]
+
+        result = await photos.update_many(
+            {"style": {"$exists": False}},
+            {"$set": {"style": "original"}}
+        )
+        
+        if result.modified_count > 0:
+            print(f"✅ Updated {result.modified_count} photos with default style 'original'")
+        else:
+            print("✅ All photos already have style field")
+        
+    except Exception as e:
+        print(f"⚠️ Error migrating photo styles: {e}")
 
 async def ensure_collections():
     """Ensure all required collections exist with proper indexes"""
@@ -109,6 +131,7 @@ async def create_indexes():
     
     photos = mongodb.database["photos"]
     await photos.create_index([("album_id", 1), ("uploaded_at", -1)])
+    await photos.create_index("style")
     
     print("✅ All indexes created successfully")
 
@@ -147,3 +170,7 @@ def get_gallery_collection():
 def get_favorites_collection():
     db = get_db()
     return db["favorites"] if db else None
+
+def get_photos_collection():
+    db = get_db()
+    return db["photos"] if db else None

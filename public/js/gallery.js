@@ -8,6 +8,9 @@ function filterGallery(filter) {
     galleryCurrentFilter = filter;
     const filteredData = galleryData.filter(item => {
         if (filter === 'all') return true;
+        if (filter === 'anime_style') {
+            return item.style === 'hayao' || item.style === 'shinkai' || item.style === 'paprika';
+        }
         return item.style === filter;
     });
     renderGallery(filteredData);
@@ -33,7 +36,6 @@ function renderGallery(data = galleryData) {
     galleryGrid.innerHTML = '';
     
     data.forEach(item => {
-        // 不再创建 col 包装器，直接创建 gallery-item
         const galleryItem = document.createElement('div');
         galleryItem.className = 'gallery-item';
         
@@ -45,12 +47,25 @@ function renderGallery(data = galleryData) {
         
         // Check if current user has liked this image (only if logged in)
         const isLiked = isLoggedIn ? checkIfUserLiked(item._id) : false;
+
+        let displayStyle = item.style;
+        const styleNames = {
+            'sketch': 'Sketch',
+            'ukiyoe': 'Ukiyo-e',
+            'cyberpunk': 'Cyberpunk',
+            'anime': 'Fauvism',
+            'ink': 'Pointillism',
+            'hayao': 'Hayao',
+            'shinkai': 'Shinkai',
+            'paprika': 'Paprika'
+        };
+        displayStyle = styleNames[item.style] || item.style.charAt(0).toUpperCase() + item.style.slice(1);
         
         galleryItem.innerHTML = `
             <div class="gallery-image">
-                <img src="/${item.image_path}" alt="${item.style} style">
+                <img src="/${item.image_path}" alt="${displayStyle} style">
                 <div class="gallery-info">
-                    <h6>${item.style.charAt(0).toUpperCase() + item.style.slice(1)} Style</h6>
+                    <h6>${displayStyle} Style</h6>
                     <p class="small">
                         <i class="bi bi-person-circle"></i> ${item.username || 'Anonymous'}
                     </p>
@@ -204,6 +219,8 @@ function updateStats() {
     const sketchCount = galleryData.filter(item => item.style === 'sketch').length;
     const animeCount = galleryData.filter(item => item.style === 'anime').length;
     const inkCount = galleryData.filter(item => item.style === 'ink').length;
+    // Statistics on the total number of anime styles
+    const animeStyleCount = galleryData.filter(item => item.style === 'hayao' || item.style === 'shinkai' || item.style === 'paprika').length;
     
     // Update counters if they exist in DOM
     const totalEl = document.getElementById('total-count');
@@ -217,6 +234,10 @@ function updateStats() {
     
     const inkEl = document.getElementById('ink-count');
     if (inkEl) inkEl.textContent = inkCount;
+    
+    // update anime style count
+    const animeStyleEl = document.getElementById('anime-style-count');
+    if (animeStyleEl) animeStyleEl.textContent = animeStyleCount;
 }
 
 // Function to load gallery images from backend

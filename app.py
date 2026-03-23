@@ -1349,6 +1349,61 @@ async def update_album(
         print(f"Error updating album: {e}")
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
+
+@app.put("/api/photos/{photo_id}/style")
+async def update_photo_style(
+    photo_id: str,
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Update photo style"""
+    try:
+        data = await request.json()
+        new_style = data.get('style')
+        
+        if not new_style:
+            return JSONResponse({"code": 400, "error": "Style is required"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Find the photo
+        photo = await db.photos.find_one({"_id": ObjectId(photo_id), "user_id": current_user.id})
+        if not photo:
+            return JSONResponse({"code": 404, "error": "Photo not found"}, status_code=404)
+        
+        # Update photo style
+        await db.photos.update_one(
+            {"_id": ObjectId(photo_id)},
+            {"$set": {"style": new_style, "updated_at": datetime.utcnow()}}
+        )
+        
+        # Award XP for updating style
+        xp_reward = 2
+        await db.users.update_one(
+            {"_id": ObjectId(current_user.id)},
+            {"$inc": {"total_xp": xp_reward}}
+        )
+        
+        await db.user_xp.insert_one({
+            "user_id": current_user.id,
+            "amount": xp_reward,
+            "source": "update_style",
+            "photo_id": photo_id,
+            "created_at": datetime.utcnow()
+        })
+        
+        return {
+            "code": 200,
+            "message": "Style updated successfully",
+            "xp_reward": xp_reward
+        }
+        
+    except Exception as e:
+        print(f"Error updating photo style: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
 @app.delete("/api/albums/{album_id}", summary="Delete album")
 async def delete_album(
     album_id: str,
@@ -1385,6 +1440,7 @@ async def upload_images_to_album(
         form = await request.form()
         album_id = form.get('album_id')
         files = form.getlist('images')
+        style = form.get('style', 'original')  # get style from form, default to 'original' if not provided
         
         if not album_id:
             return JSONResponse({"code": 400, "error": "Album ID is required"}, status_code=400)
@@ -1419,13 +1475,14 @@ async def upload_images_to_album(
             with open(filepath, "wb") as f:
                 f.write(content)
             
-            # Create photo record
+            # Create photo record with style
             photo = {
                 "album_id": album_id,
                 "user_id": current_user.id,
                 "filename": filename,
                 "image_path": f"/uploads/album_photos/{filename}",
                 "file_size": len(content),
+                "style": style,  #add style field
                 "uploaded_at": datetime.utcnow()
             }
             

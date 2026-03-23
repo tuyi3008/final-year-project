@@ -13,8 +13,13 @@ let isSelectionMode = false;
 const STYLE_OPTIONS = [
     { value: 'original', label: 'Original' },
     { value: 'sketch', label: 'Sketch' },
-    { value: 'anime', label: 'Anime' },
-    { value: 'ink', label: 'Ink Wash' }
+    { value: 'ukiyoe', label: 'Ukiyo-e' },
+    { value: 'cyberpunk', label: 'Cyberpunk' },
+    { value: 'anime', label: 'Fauvism' },
+    { value: 'ink', label: 'Pointillism' },
+    { value: 'hayao', label: 'Hayao' },
+    { value: 'shinkai', label: 'Shinkai' },
+    { value: 'paprika', label: 'Paprika' }
 ];
 
 async function initializePage() {
