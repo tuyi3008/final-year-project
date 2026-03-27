@@ -1404,6 +1404,117 @@ async def update_photo_style(
         print(f"Error updating photo style: {e}")
         return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
 
+@app.delete("/api/photos/{photo_id}", summary="Delete photo")
+async def delete_photo(
+    photo_id: str,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Delete a photo from album"""
+    try:
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        # Find the photo
+        photo = await db.photos.find_one({"_id": ObjectId(photo_id), "user_id": current_user.id})
+        if not photo:
+            return JSONResponse({"code": 404, "error": "Photo not found"}, status_code=404)
+        
+        # Get album info to update photo count later
+        album_id = photo.get("album_id")
+        
+        # Delete the actual file from filesystem
+        image_path = photo.get("image_path")
+        if image_path:
+            # Remove leading slash if present
+            file_path = image_path.lstrip('/')
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    print(f"✅ Deleted file: {file_path}")
+            except Exception as e:
+                print(f"⚠️ Error deleting file: {e}")
+        
+        # Delete photo from database
+        await db.photos.delete_one({"_id": ObjectId(photo_id)})
+        
+        # Update album's photo count and updated_at
+        if album_id:
+            photo_count = await db.photos.count_documents({"album_id": album_id})
+            await db.albums.update_one(
+                {"_id": ObjectId(album_id)},
+                {"$set": {"updated_at": datetime.utcnow(), "photo_count": photo_count}}
+            )
+        
+        return {
+            "code": 200,
+            "message": "Photo deleted successfully"
+        }
+        
+    except Exception as e:
+        print(f"Error deleting photo: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/photos/batch-delete", summary="Batch delete photos")
+async def batch_delete_photos(
+    request: Request,
+    current_user: UserInDB = Depends(get_current_user_strict)
+):
+    """Delete multiple photos"""
+    try:
+        data = await request.json()
+        photo_ids = data.get('photo_ids', [])
+        
+        if not photo_ids:
+            return JSONResponse({"code": 400, "error": "No photo IDs provided"}, status_code=400)
+        
+        db = get_db()
+        if db is None:
+            return JSONResponse({"code": 500, "error": "Database not connected"}, status_code=500)
+        
+        deleted_count = 0
+        album_ids = set()
+        
+        for photo_id in photo_ids:
+            # Find the photo
+            photo = await db.photos.find_one({"_id": ObjectId(photo_id), "user_id": current_user.id})
+            if photo:
+                album_ids.add(photo.get("album_id"))
+                
+                # Delete file
+                image_path = photo.get("image_path")
+                if image_path:
+                    file_path = image_path.lstrip('/')
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                    except Exception as e:
+                        print(f"⚠️ Error deleting file: {e}")
+                
+                # Delete from database
+                await db.photos.delete_one({"_id": ObjectId(photo_id)})
+                deleted_count += 1
+        
+        # Update affected albums
+        for album_id in album_ids:
+            if album_id:
+                photo_count = await db.photos.count_documents({"album_id": album_id})
+                await db.albums.update_one(
+                    {"_id": ObjectId(album_id)},
+                    {"$set": {"updated_at": datetime.utcnow(), "photo_count": photo_count}}
+                )
+        
+        return {
+            "code": 200,
+            "message": f"Successfully deleted {deleted_count} photos",
+            "deleted_count": deleted_count
+        }
+        
+    except Exception as e:
+        print(f"Error batch deleting photos: {e}")
+        return JSONResponse({"code": 500, "error": str(e)}, status_code=500)
+
 @app.delete("/api/albums/{album_id}", summary="Delete album")
 async def delete_album(
     album_id: str,

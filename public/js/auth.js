@@ -3,6 +3,12 @@
 class AuthManager {
     constructor() {
         console.log('AuthManager constructor');
+
+        this.profileCache = null;
+        this.profileCacheTime = 0;
+        this.cacheTTL = 60000;
+        this.isRefreshingXP = false;  // prvent multiple simultaneous XP refreshes
+        
         // make sure init runs after DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => this.init());
@@ -50,6 +56,12 @@ class AuthManager {
         window.addEventListener('xpUpdated', (event) => {
             console.log('XP updated event received:', event.detail);
 
+            // Prevent multiple simultaneous XP refreshes
+            if (this.isRefreshingXP) {
+                console.log('⏭️ Skipping XP refresh (already refreshing)');
+                return;
+            }
+
             if (window.refreshXP) {
                 window.refreshXP();
             }
@@ -66,36 +78,71 @@ class AuthManager {
         this.showMessage(message, type);
     }
 
-    async getUserXP() {
-        if (!this.isLoggedIn()) return 0;
+    async _getProfile() {
+        if (!this.isLoggedIn()) return null;
+        
+        const now = Date.now();
+        if (this.profileCache && (now - this.profileCacheTime) < this.cacheTTL) {
+            console.log('📦 Using cached profile');
+            return this.profileCache;
+        }
         
         try {
             const response = await fetch('http://localhost:8000/api/user/profile', {
                 headers: this.getAuthHeaders()
             });
             
-            const data = await response.json();
-            
-            if (data.code === 200) {
-                return data.total_xp || 0;
+            if (response.status === 401) {
+                console.log('Token expired, logging out...');
+                this.logout();
+                return null;
             }
+            
+            const data = await response.json();
+            if (data.code === 200) {
+                this.profileCache = data;
+                this.profileCacheTime = now;
+                console.log('✅ Profile cached');
+                return data;
+            }
+            return null;
         } catch (error) {
-            console.error('Error getting user XP:', error);
+            console.error('Error fetching profile:', error);
+            return null;
         }
+    }
+
+    async getUserXP() {
+        if (!this.isLoggedIn()) return 0;
         
-        return 0;
+        const data = await this._getProfile();
+        return data?.total_xp || 0;
     }
 
     async refreshAllXPDisplays() {
         if (!this.isLoggedIn()) return;
-        
-        const xp = await this.getUserXP();
 
-        window.dispatchEvent(new CustomEvent('xpUpdated', { 
-            detail: { amount: 0, source: 'refresh', total: xp }
-        }));
+        if (this.isRefreshingXP) {
+            console.log('⏭️ Skipping XP refresh (already in progress)');
+            return;
+        }
         
-        return xp;
+        this.isRefreshingXP = true;
+        
+        try {
+            this.profileCache = null;
+            this.profileCacheTime = 0;
+            
+            const xp = await this.getUserXP();
+
+            window.dispatchEvent(new CustomEvent('xpUpdated', { 
+                detail: { amount: 0, source: 'refresh', total: xp }
+            }));
+            
+            return xp;
+        } finally {
+            this.isRefreshingXP = false;
+        }
     }
     
     bindLoginButtons() {
@@ -241,6 +288,8 @@ class AuthManager {
                         const modal = bootstrap.Modal.getInstance(modalElement);
                         if (modal) modal.hide();
                     }
+                    this.profileCache = null;
+                    this.profileCacheTime = 0;
                     this.updateUI();
                     // Load avatar after successful login
                     this.loadUserAvatar();
@@ -386,27 +435,13 @@ class AuthManager {
         
         console.log('Loading user avatar...');
         
-        try {
-            const response = await fetch('http://localhost:8000/api/user/profile', {
-                headers: this.getAuthHeaders()
-            });
-            
-            const data = await response.json();
-            
-            if (response.status === 401) {
-                console.log('Token expired, logging out...');
-                this.logout();
-                return;
-            }
-            
-            if (data.code === 200 && data.avatar_path) {
-                this.updateAvatarDisplay(data.avatar_path);
-            } else {
-                // Set default avatar if no avatar found
-                this.setDefaultAvatar();
-            }
-        } catch (error) {
-            console.error('Error loading avatar:', error);
+        // 🆕 使用缓存方法
+        const data = await this._getProfile();
+        
+        if (data && data.code === 200 && data.avatar_path) {
+            this.updateAvatarDisplay(data.avatar_path);
+        } else {
+            // Set default avatar if no avatar found
             this.setDefaultAvatar();
         }
     }
@@ -541,6 +576,9 @@ class AuthManager {
         localStorage.removeItem('token');
         localStorage.removeItem('token_type');
         localStorage.removeItem('userEmail');
+
+        this.profileCache = null;
+        this.profileCacheTime = 0;
 
         document.dispatchEvent(new CustomEvent('userLoggedOut'));
         
