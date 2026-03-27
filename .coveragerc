@@ -1,0 +1,22 @@
+ [run]
+omit = 
+    main.py
+    config*.py
+    tests/*
+    tf_env/*
+    docker-data/*
+    uploads/*
+    public/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise AssertionError
+
+# 只统计核心模块
+include = 
+    app.py
+    auth.py
+    database.py
+    model.py
