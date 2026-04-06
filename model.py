@@ -296,7 +296,7 @@ class UNet(nn.Module):
 
 
 # =============================
-# Ukiyo-e Generator (浮世绘风格 - CycleGAN Architecture)
+# Ukiyo-e Generator (Ukiyo-e Style - CycleGAN Architecture)
 # =============================
 class UkiyoEResidualBlock(nn.Module):
     """Residual Block for Ukiyo-e style"""
