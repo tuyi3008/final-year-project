@@ -262,7 +262,7 @@ class UNet(nn.Module):
             nn.BatchNorm2d(out_channels)
         ]
         if dropout:
-            layers.append(nn.Dropout(0.5))
+            layers.append(nn.Dropout(0.5)) # prevent overfitting in deeper layers
         return nn.Sequential(*layers)
     
     def forward(self, x):

@@ -60,7 +60,7 @@ class StyleTransferDataset(Dataset):
         style_idx = np.random.randint(0, len(self.style_paths))
         
         content_img = Image.open(self.content_paths[content_idx]).convert('RGB')
-        style_img = Image.open(self.content_paths[style_idx]).convert('RGB')  # 先用内容图片作为风格
+        style_img = Image.open(self.content_paths[style_idx]).convert('RGB')
         
         return self.transform(content_img), self.transform(style_img)
 

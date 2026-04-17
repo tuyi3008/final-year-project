@@ -87,6 +87,7 @@ JWT_SECRET_KEY=your-secret-key-here-change-this-in-production
 MONGODB_URL=mongodb://your_username:your_password@localhost:27018/
 DB_NAME=styletrans_db
 ```
+⚠️ Change `your_username` and `your_password` to your own credentials.
 
 ⚠️ **Security Notes**
 
@@ -134,6 +135,8 @@ models/
 **1. Self-Trained Models (Provided by Author)**
 
 Download from: [Google Drive](https://drive.google.com/drive/folders/1Wsw3iWFyzr4qA5K9Wz4yHjhf9YtIwmOu)
+
+*Place the downloaded `.pt` files into the `models/` directory.*
 
 | File | Style |
 | --- | --- |
@@ -216,6 +219,8 @@ final-year-project/
 
 ## 🧪 Testing
 
+Ensure MongoDB is running before executing tests.
+
 Run tests:
 
 ```bash
@@ -263,7 +268,7 @@ pytest tests/ --cov=. --cov-report=html
 ### Port Already in Use
 
 ```bash
-uvicorn app:app --reload --port 8001
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ---

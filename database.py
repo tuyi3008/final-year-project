@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # MongoDB configuration - use correct default values
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://admin:admin123@localhost:27017/?authSource=admin")
+# MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://admin:admin123@localhost:27018/?authSource=admin")
+MONGODB_URL = os.getenv("MONGODB_URL")
+if not MONGODB_URL:
+    raise ValueError("MONGODB_URL not set in .env file")
 DB_NAME = os.getenv("DB_NAME", "styletrans_db")
 
 class MongoDB:

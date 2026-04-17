@@ -216,7 +216,7 @@ def visualize_compare(model_path, test_images=None):
 
 if __name__ == "__main__":
 
-    MODEL_PATH = r"D:\Final_Year_Project\final-year-project\ai\outputs\lowest_model.pth"
+    MODEL_PATH = r"D:\Final_Year_Project\final-year-project\ai\outputs\sketch.pt"
     TEST_IMAGE = r"D:\Final_Year_Project\final-year-project\ai\test.jpg"
     OUTPUT_IMAGE = r"D:\Final_Year_Project\final-year-project\ai\outputs\test_sketch.jpg"
 
